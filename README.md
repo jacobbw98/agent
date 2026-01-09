@@ -9,6 +9,7 @@ A Python-based agentic AI assistant running locally with Ollama + Nemotron-nano.
 - 📝 **Grading** - Parse DOCX rubrics and grade submissions
 - 🎮 **Game Control** - Keyboard/mouse input, window focus
 - 📷 **Vision** - Screenshots and image handling
+- 🧬 **Neural Visualization** - Dynamic visualization of model thinking patterns
 
 ## Setup
 
@@ -25,10 +26,10 @@ A Python-based agentic AI assistant running locally with Ollama + Nemotron-nano.
    ollama serve
    ```
 
-3. **Run the UI:**
+3. **Run the Pro UI:**
 
    ```bash
-   python ui.py
+   python ui_pro.py
    ```
 
 4. Open <http://127.0.0.1:7860> in your browser.
@@ -44,7 +45,7 @@ Just type natural language commands like:
 
 ## Files
 
-- `ui.py` - Gradio web interface
+- `ui_pro.py` - Pro Gradio web interface with neural visualization
 - `agent.py` - Main agent loop with tool execution
 - `ollama_client.py` - Ollama API wrapper
 - `tools/` - Tool implementations
@@ -53,3 +54,4 @@ Just type natural language commands like:
   - `grading.py` - Rubric parsing and grading
   - `gamecontrol.py` - Keyboard/mouse/window control
   - `vision.py` - Screenshot utilities
+  - `neural_viz.py` - Neural activity visualization

@@ -222,11 +222,16 @@ def create_pro_ui():
         z-index: -1;
         pointer-events: none;
     }
-    .block, .form, .panel, .container, .wrap, .gradio-container {
+    .block, .form, .panel {
         background: rgba(10, 25, 50, 0.3) !important;
         border: 1px solid rgba(0, 255, 0, 0.2) !important;
         box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8) !important;
         border-radius: 12px !important;
+    }
+    .gradio-container, .main, .wrap {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
     }
     label, .label-wrap, .chatbot, .chatbot * {
         background: transparent !important;
@@ -275,94 +280,140 @@ def create_pro_ui():
         font-weight: bold !important;
     }
     /* Hide audio player waveform */
+    /* Hide audio player waveform */
     .gr-audio, [data-testid="waveform-slot"], .waveform-container, audio {
         display: none !important;
+    }
+    
+    /* Hide Gradio API Footer */
+    footer, .gradio-container > .main > .wrap > footer {
+        display: none !important;
+    }
+    
+    /* Toggle UI Button Fixed Position */
+    #toggle-ui-btn {
+        position: fixed !important;
+        top: 20px !important;
+        right: 20px !important;
+        z-index: 99999 !important;
+        width: auto !important;
+        background: rgba(0, 50, 0, 0.6) !important;
+        border: 1px solid #00ff00 !important;
+        color: #00ff00 !important;
+        backdrop-filter: blur(4px);
+        opacity: 0 !important; /* Invisible by default */
+        transition: opacity 0.3s ease-in-out !important;
+    }
+    #toggle-ui-btn:hover {
+        opacity: 1 !important; /* Visible on hover */
     }
     """
     
     with gr.Blocks(title="Pro AI Agent") as demo:
-        gr.Markdown("""
-        # 🚀 Pro AI Agent
-        **Neural Interface** | Live Thought Stream | Visual Feed
-        """)
+        # Toggle UI Button
+        toggle_btn = gr.Button("👁️ Hide/Show UI", elem_id="toggle-ui-btn")
         
-        with gr.Row():
-            # LEFT COLUMN: Chat + Thoughts
-            with gr.Column(scale=1):
-                gr.Markdown("### 💬 Chat")
-                chatbot = gr.Chatbot(
-                    label="Conversation",
-                    height=300
-                )
-                
-                with gr.Row():
-                    msg = gr.Textbox(
-                        label="Message",
-                        placeholder="Give me a task...",
-                        scale=4,
+        toggle_js = """
+        () => {
+            const ui = document.getElementById('ui-container');
+            if (ui) {
+                if (ui.style.opacity === '0') {
+                     ui.style.opacity = '1';
+                     ui.style.pointerEvents = 'auto';
+                } else {
+                     ui.style.opacity = '0';
+                     ui.style.pointerEvents = 'none';
+                }
+            }
+        }
+        """
+        
+        toggle_btn.click(None, None, None, js=toggle_js)
+        
+        # Wrap EVERYTHING (Title + Main UI) in container for toggling
+        with gr.Column(elem_id="ui-container") as main_wrapper:
+            gr.Markdown("""
+            # 🚀 Pro AI Agent
+            **Neural Interface** | Live Thought Stream | Visual Feed
+            """)
+            
+            with gr.Row() as main_ui:
+                # LEFT COLUMN: Chat + Thoughts
+                with gr.Column(scale=1):
+                    gr.Markdown("### 💬 Chat")
+                    chatbot = gr.Chatbot(
+                        label="Conversation",
+                        height=300
+                    )
+                    
+                    with gr.Row():
+                        msg = gr.Textbox(
+                            label="Message",
+                            placeholder="Give me a task...",
+                            scale=4,
+                            lines=1
+                        )
+                        send_btn = gr.Button("Send", variant="primary", scale=1)
+                    
+                    with gr.Row():
+                        planning_mode = gr.Checkbox(
+                            label="🧠 Planning Mode",
+                            value=False,
+                            info="Think before acting"
+                        )
+                        continue_btn = gr.Button("▶️ Continue", variant="secondary")
+                        clear_btn = gr.Button("🗑️ Clear All")
+                    
+                    model_dropdown = gr.Dropdown(
+                        choices=models,
+                        value=DEFAULT_MODEL if DEFAULT_MODEL in models else (models[0] if models else "qwen2.5:14b"),
+                        label="Model",
+                        interactive=True
+                    )
+                    
+                    gr.Markdown("### 🧠 Thought Stream")
+                    thought_display = gr.Textbox(
+                        label="",
+                        value="Waiting for input...",
+                        lines=12,
+                        max_lines=15,
+                        interactive=False
+                    )
+            
+                # RIGHT COLUMN: Live Visual Feed
+                with gr.Column(scale=1):
+                    gr.Markdown("### 👁️ Live Visual Feed")
+                    visual_feed = gr.Image(
+                        label="What the AI sees/controls",
+                        type="filepath",
+                        height=500
+                    )
+                    
+                    with gr.Row():
+                        refresh_btn = gr.Button("📷 Capture Screen")
+                    
+                    gr.Markdown("""
+                    ### Available Tools
+                    - 🌐 Browser: Navigate, click, type
+                    - 📁 Files: Read, write, search
+                    - 📝 Grading: Parse rubrics
+                    - 🎮 Game: Keys, mouse, windows
+                    - 📷 Screenshot: Capture screen
+                    """)
+                    
+                    gr.Markdown("### 🎵 Music")
+                    audio_player = gr.Audio(
+                        label="Music Player",
+                        type="filepath",
+                        autoplay=True
+                    )
+                    next_btn = gr.Button("⏭️ Next Track")
+                    now_playing = gr.Textbox(
+                        label="Now Playing",
+                        value="Click 'Next Track' to start",
+                        interactive=False,
                         lines=1
                     )
-                    send_btn = gr.Button("Send", variant="primary", scale=1)
-                
-                with gr.Row():
-                    planning_mode = gr.Checkbox(
-                        label="🧠 Planning Mode",
-                        value=False,
-                        info="Think before acting"
-                    )
-                    continue_btn = gr.Button("▶️ Continue", variant="secondary")
-                    clear_btn = gr.Button("🗑️ Clear All")
-                
-                model_dropdown = gr.Dropdown(
-                    choices=models,
-                    value=DEFAULT_MODEL if DEFAULT_MODEL in models else (models[0] if models else "qwen2.5:14b"),
-                    label="Model",
-                    interactive=True
-                )
-                
-                gr.Markdown("### 🧠 Thought Stream")
-                thought_display = gr.Textbox(
-                    label="",
-                    value="Waiting for input...",
-                    lines=12,
-                    max_lines=15,
-                    interactive=False
-                )
-            
-            # RIGHT COLUMN: Live Visual Feed
-            with gr.Column(scale=1):
-                gr.Markdown("### 👁️ Live Visual Feed")
-                visual_feed = gr.Image(
-                    label="What the AI sees/controls",
-                    type="filepath",
-                    height=500
-                )
-                
-                with gr.Row():
-                    refresh_btn = gr.Button("📷 Capture Screen")
-                
-                gr.Markdown("""
-                ### Available Tools
-                - 🌐 Browser: Navigate, click, type
-                - 📁 Files: Read, write, search
-                - 📝 Grading: Parse rubrics
-                - 🎮 Game: Keys, mouse, windows
-                - 📷 Screenshot: Capture screen
-                """)
-                
-                gr.Markdown("### 🎵 Music")
-                audio_player = gr.Audio(
-                    label="Music Player",
-                    type="filepath",
-                    autoplay=True
-                )
-                next_btn = gr.Button("⏭️ Next Track")
-                now_playing = gr.Textbox(
-                    label="Now Playing",
-                    value="Click 'Next Track' to start",
-                    interactive=False,
-                    lines=1
-                )
         
         # Event handlers
         def on_send(message, history, model, planning):
@@ -458,6 +509,7 @@ if __name__ == "__main__":
             uniform vec2 u_zoom;
             uniform vec2 u_invZoom;  // 1/zoom computed in JS (float64) for deep zoom precision
             uniform float u_maxIter;
+            uniform vec3 u_rippleParams; // x=time, y=intensity, z=frequency (new)
             out vec4 fragColor;
 
             // Double-single arithmetic for deep zoom precision
@@ -777,6 +829,21 @@ if __name__ == "__main__":
                         vec2 offset = (vec2(ax, ay) - 0.5 * (aa - 1.0)) / aa;
                         vec2 sampleCoord = gl_FragCoord.xy + offset;
                         
+                        // ===== RIPPLE DISTORTION =====
+                        if (u_rippleParams.y > 0.001) {
+                            vec2 center = u_resolution.xy * 0.5;
+                            vec2 toPixel = sampleCoord - center;
+                            float dist = length(toPixel);
+                            float distNorm = dist / u_resolution.y;
+                            
+                            // Expanding sine wave shockwave
+                            // Freq = 30.0, Speed = 20.0 (from u_rippleParams.x time)
+                            float wave = sin(distNorm * 30.0 - u_rippleParams.x * 20.0);
+                            
+                            // Apply distortion (intensity in y)
+                            sampleCoord += normalize(toPixel) * wave * u_rippleParams.y * u_resolution.y * 0.2;
+                        }
+                        
                         // Get main fractal data with orbit traps
                         OrbitData data = get_iter_full(sampleCoord);
                         float iter = data.iter;
@@ -957,6 +1024,7 @@ if __name__ == "__main__":
             const locZoom = gl.getUniformLocation(program, "u_zoom");
             const locInvZoom = gl.getUniformLocation(program, "u_invZoom");
             const locMaxIter = gl.getUniformLocation(program, "u_maxIter");
+            const locRipple = gl.getUniformLocation(program, "u_rippleParams");
 
             const buffer = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -1022,6 +1090,221 @@ if __name__ == "__main__":
             let accumulatedTime = 0;
             let accumulatedZoomLog = 0;
 
+            // Ripple State
+            let rippleTimer = 0;
+            let rippleIntensity = 0;
+            let lastBeatEnergy = 0;
+            let avgBeatDelta = 0.01; // Adaptive threshold baseline
+
+            // ===== AUDIO SYNC SETUP =====
+            let audioCtx, analyser, source;
+            let audioDataArray;
+            let isAudioActive = false;
+            let bassEnergy = 0;
+            let midEnergy = 0;
+            let highEnergy = 0;
+
+            function setupAudio() {
+                // Audio Context Global
+                window.audioCtx = null;
+                
+                // Debug overlay REMOVED for production
+                /* 
+                if (!window.audioDebug) { ... }
+                */
+                window.audioDebug = null; 
+
+
+                // Helper: Recursive Shadow DOM Search
+                function findDeepAudio(root) {
+                    let audios = Array.from(root.querySelectorAll('audio'));
+                    const all = root.querySelectorAll('*');
+                    for (const el of all) {
+                        if (el.shadowRoot) {
+                            audios = audios.concat(findDeepAudio(el.shadowRoot));
+                        }
+                    }
+                    return audios;
+                }
+
+                // POLLING LOOP: Check every 500ms
+                const pollInterval = setInterval(() => {
+                    if (isAudioActive) {
+                        if (window.audioCtx && window.audioCtx.state === 'suspended') window.audioCtx.resume();
+                        return;
+                    }
+
+                    // Deep scan for ALL audio elements (Light + Shadow DOM)
+                    const audioEls = findDeepAudio(document);
+                    
+                    if (audioEls.length === 0) {
+                        if (window.audioDebug) window.audioDebug.innerText = "Status: Searching DOM for <audio>...";
+                        return;
+                    }
+
+                    // Find the one that is actively playing
+                    let activeEl = null;
+                    for (const el of audioEls) {
+                        if (!el.paused && el.currentTime > 0) {
+                            activeEl = el;
+                            break;
+                        }
+                    }
+
+                    if (!activeEl) {
+                        // Debug info for the first few elements found
+                        const count = audioEls.length;
+                        const first = audioEls[0];
+                        const sName = first.src ? first.src.split('/').pop().substring(0, 10) : "NoSrc";
+                        const debugInfo = `Found ${count}. 1st: P:${first.paused} T:${first.currentTime.toFixed(1)}`;
+                        if (window.audioDebug) window.audioDebug.innerText = `Status: Waiting... ${debugInfo}`;
+                        return;
+                    }
+                    
+                    const audioEl = activeEl;
+
+                    // FOUND PLAYING ELEMENT!
+                    console.log("AUDIO STARTED! Hooking up visualizer...");
+                    if (window.audioDebug) window.audioDebug.innerText = "Status: Play Detected! Starting Fetch...";
+
+                    // Stop polling? No, keep it running to resume context if needed, but shield init logic
+                    // Actually, let's set isAudioActive=true *inside* the success block
+
+                    // INIT LOGIC
+                    try {
+                        const AudioContext = window.AudioContext || window.webkitAudioContext;
+                        audioCtx = new AudioContext();
+                        window.audioCtx = audioCtx; // Global ref
+
+                        analyser = audioCtx.createAnalyser();
+                        analyser.fftSize = 2048;
+                        const bufferLength = analyser.frequencyBinCount;
+                        audioDataArray = new Uint8Array(bufferLength);
+                        
+                        // Anti-optimization Gain
+                        const gainNode = audioCtx.createGain();
+                        gainNode.gain.value = 0.001; 
+                        analyser.connect(gainNode);
+                        gainNode.connect(audioCtx.destination);
+                        
+                        // Resume on click (backup)
+                        document.body.addEventListener('click', () => {
+                            if (audioCtx.state === 'suspended') audioCtx.resume();
+                        });
+
+                        // Strategy Choice
+                        const src = audioEl.currentSrc || audioEl.src;
+                        
+                        // 1. Stream
+                        if (audioEl.srcObject) {
+                            console.log("Strategy: MediaStream");
+                            if (window.audioDebug) window.audioDebug.innerText = "Status: Stream Source...";
+                            const source = audioCtx.createMediaStreamSource(audioEl.srcObject);
+                            source.connect(analyser);
+                            isAudioActive = true;
+                            // Clear polling? Nah, safe to keep checking 
+                            return;
+                        }
+
+                        // 2. Fetch & Decode
+                        if (src) {
+                            console.log("Strategy: Fetch & Decode", src);
+                            if (window.audioDebug) window.audioDebug.innerText = "Status: Downloading...";
+                            
+                            // Mark active so we don't retry fetch
+                            isAudioActive = true; 
+
+                            fetch(src)
+                                .then(r => r.arrayBuffer())
+                                .then(b => audioCtx.decodeAudioData(b))
+                                .then(audioBuffer => {
+                                    // Peak Check
+                                    const raw = audioBuffer.getChannelData(0);
+                                    let peak = 0;
+                                    for(let i=0; i<raw.length; i+=100) {
+                                        const v = Math.abs(raw[i]);
+                                        if(v > peak) peak = v;
+                                    }
+                                    if (window.audioDebug) window.audioDebug.innerText = `Status: Decoded! Peak: ${peak.toFixed(4)}`;
+                                    
+                                    startBufferSync(audioBuffer, audioEl);
+                                })
+                                .catch(e => {
+                                    console.error("Fetch Error:", e);
+                                    isAudioActive = false; // Allow retry
+                                    if (window.audioDebug) window.audioDebug.innerText = "Error: " + e.message;
+                                });
+                        }
+
+                    } catch(e) {
+                         console.error("Init Error:", e);
+                         if (window.audioDebug) window.audioDebug.innerText = "Init Fail: " + e.message;
+                    }
+
+                }, 500); // End Interval
+
+                // Helper: Sync Buffer Logic
+                function startBufferSync(decodedBuffer, element) {
+                     let bufferSource = null;
+                     let lastSyncTime = 0;
+                     let lastCtxTime = 0;
+                     
+                     function playBuffer(startTime) {
+                         if (bufferSource) try { bufferSource.stop(); } catch(e){}
+                         bufferSource = audioCtx.createBufferSource();
+                         bufferSource.buffer = decodedBuffer;
+                         bufferSource.connect(analyser); // Connect to analyser
+                         
+                         let offset = startTime;
+                         if (offset >= decodedBuffer.duration) offset = 0;
+                         
+                         bufferSource.start(0, offset);
+                         lastSyncTime = offset;
+                         lastCtxTime = audioCtx.currentTime;
+                         
+                         bufferSource.onended = () => { /* clean */ };
+                     }
+                     
+                     function stopBuffer() {
+                        if (bufferSource) { try { bufferSource.stop(); } catch(e){} bufferSource = null; }
+                     }
+                     
+                     // Sync Interval (runs inside the closure)
+                     setInterval(() => {
+                        if (!element.paused) {
+                            if (!bufferSource) playBuffer(element.currentTime);
+                            else {
+                                // Drift Correction - TIGHTER SYNC
+                                const currentBufferTime = lastSyncTime + (audioCtx.currentTime - lastCtxTime);
+                                // If drift > 50ms, resync immediately
+                                if (Math.abs(element.currentTime - currentBufferTime) > 0.05) {
+                                    playBuffer(element.currentTime);
+                                }
+                            }
+                        } else {
+                            if (bufferSource) stopBuffer();
+                        }
+                     }, 100); // Check every 100ms (was 500ms) for tighter lock
+                     
+                     element.addEventListener('seeking', () => { if(!element.paused) playBuffer(element.currentTime); });
+                     element.addEventListener('pause', stopBuffer);
+                     element.addEventListener('play', () => {
+                        playBuffer(element.currentTime);
+                        // Reset stats here too just in case
+                        avgBeatDelta = 0.01;
+                     });
+                     // CRITICAL: Reset on 'loadeddata' for automatic playlist transitions
+                     element.addEventListener('loadeddata', () => {
+                        avgBeatDelta = 0.01;
+                        lastBeatEnergy = 0;
+                        console.log("New Track Loaded - Ripple Stats Reset");
+                     });
+                }
+            }
+            
+            // Start immediately
+            setupAudio();
+
             function render(now) {
                 // Calculate actual delta time
                 const dt = (now - lastFrameTime) * 0.001;
@@ -1034,7 +1317,80 @@ if __name__ == "__main__":
                 }
 
                 // Increment time accumulator based on SMOOTHED delta
-                accumulatedTime += smoothedDelta;
+                
+                // ===== AUDIO ANALYSIS =====
+                let audioZoomBoost = 0;
+                let audioMorphBoost = 1.0;
+                
+                if (isAudioActive && audioDataArray) {
+                    analyser.getByteFrequencyData(audioDataArray);
+                    
+                    // Calculate energy bands
+                    const bassRange = audioDataArray.slice(0, 10);   // ~0-200Hz
+                    const midRange = audioDataArray.slice(10, 100);  // ~200-2000Hz
+                    const highRange = audioDataArray.slice(100, 512); // ~2kHz+
+                    
+                    // Normalize to 0-1
+                    bassEnergy = bassRange.reduce((a, b) => a + b, 0) / bassRange.length / 255.0;
+                    midEnergy = midRange.reduce((a, b) => a + b, 0) / midRange.length / 255.0;
+                    highEnergy = highRange.reduce((a, b) => a + b, 0) / highRange.length / 255.0;
+                    
+                    // TRANSIENT DETECTION (Ripple)
+                    const beatEnergy = Math.max(bassEnergy, midEnergy);
+                    const beatDelta = beatEnergy - lastBeatEnergy;
+                    
+                    // Separate Deltas for Type Detection
+                    // We need these to know IF it was a kick or a snare
+                    // (Note: We still use max energy for the trigger threshold to keep it unified)
+                    // But we could strictly calculate previous frame state if we really wanted precision.
+                    // For now, simple comparison of current energy levels usually works because hits are distinct.
+                    // Actually, let's look at which one DROVE the beatDelta.
+                    
+                    // Adaptive Average Tracking - DECAY FIX
+                    const activity = Math.max(0, beatDelta);
+                    avgBeatDelta = avgBeatDelta * 0.95 + activity * 0.05;
+                    
+                    // Dynamic Trigger
+                    const dynamicThreshold = Math.max(0.005, avgBeatDelta * 1.5);
+                    
+                    if (beatDelta > dynamicThreshold && beatEnergy > 0.1) { 
+                         // PERCUSSION HIT!
+                         // Check what triggered it: Bass or Mid?
+                         if (bassEnergy > midEnergy) {
+                             rippleIntensity = 0.1;  // Bass Hit (Half of 0.2)
+                         } else {
+                             rippleIntensity = 0.05; // Mid Hit (Quarter of 0.2)
+                         }
+                    }
+                    lastBeatEnergy = beatEnergy;
+                    
+                    // Ripple physics
+                    rippleTimer += smoothedDelta;
+                    rippleIntensity *= 0.92; // Fast decay
+                    if (rippleIntensity < 0.01) rippleIntensity = 0;
+                    
+                    // Apply effects
+                    // Bass thumps the zoom - INSTANT response (no smoothing)
+                    // Lower threshold (0.2) + High multiplier (0.8) for observable "punch"
+                    if (bassEnergy > 0.2) {
+                        audioZoomBoost = (bassEnergy - 0.2) * 0.8; 
+                    }
+                    
+                    // Mids/Highs speed up morphing
+                    // High multiplier (8.0) to make the shape dance noticeably
+                    audioMorphBoost = 1.0 + (midEnergy + highEnergy) * 8.0;
+                    
+                    // Update Debug Text - REMOVED for final polish
+                    /*
+                    if (window.audioDebug) {
+                         // ... debug code removed for clean view ...
+                         if (window.audioDebug.parentNode) window.audioDebug.parentNode.removeChild(window.audioDebug);
+                         window.audioDebug = null;
+                    }
+                    */
+                }
+                
+                accumulatedTime += smoothedDelta * audioMorphBoost;
                 // NOTE: Zoom accumulation is now handled by the adaptive zoom pause system below
 
                 const dpr = window.devicePixelRatio || 1;
@@ -1225,10 +1581,16 @@ if __name__ == "__main__":
                 const targetZoomRate = hasGoodBoundary ? cfg.zoom.rate : 0;
                 smoothZoomRate = smoothZoomRate * 0.95 + targetZoomRate * 0.05;  // 20-frame transition
                 
+                // Apply Audio Boost (bass thump)
+                let finalZoomRate = smoothZoomRate;
+                if (isAudioActive && audioZoomBoost > 0) {
+                     finalZoomRate += audioZoomBoost;
+                }
+                
                 // Dynamic zoom speed limit based on current zoom level
                 // Deeper zooms should have slower max zoom rate to maintain precision
                 const dynamicMaxRate = cfg.zoom.rate / (1 + accumulatedZoomLog * 0.1);
-                let clampedZoomRate = Math.min(smoothZoomRate, dynamicMaxRate);
+                let clampedZoomRate = Math.min(finalZoomRate, dynamicMaxRate);
                 
                 // FORCE COMPLETE STOP when stuck - don't zoom at all until complexity returns
                 if (stuckTimer > stuckThreshold) {
@@ -1308,6 +1670,7 @@ if __name__ == "__main__":
                 gl.uniform2fv(locZoom, splitDouble(zoom));
                 gl.uniform2fv(locInvZoom, splitDouble(1.0 / zoom));
                 gl.uniform1f(locMaxIter, gpuMaxIter);
+                gl.uniform3f(locRipple, rippleTimer, rippleIntensity, 0.0);
 
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
                 requestAnimationFrame(render);

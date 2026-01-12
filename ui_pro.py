@@ -1342,6 +1342,9 @@ if __name__ == "__main__":
                     const activity = Math.max(0, beatDelta);
                     avgBeatDelta = avgBeatDelta * 0.95 + activity * 0.05;
                     
+                    // SAFETY CLAMP: Prevent threshold from running away on loud tracks
+                    if (avgBeatDelta > 0.1) avgBeatDelta = 0.1;
+                    
                     // Dynamic Trigger
                     const dynamicThreshold = Math.max(0.005, avgBeatDelta * 1.5);
                     
@@ -1358,6 +1361,16 @@ if __name__ == "__main__":
                     
                     // Ripple physics
                     rippleTimer += smoothedDelta;
+                    
+                    // PERIODIC RESET to prevent float precision loss on long tracks
+                    // Shader uses: sin(dist * 30.0 - time * 20.0)
+                    // We need time * 20.0 to wrap around 2*PI
+                    // Period = 2*PI / 20.0
+                    const ripplePeriod = Math.PI * 2 / 20.0;
+                    if (rippleTimer > ripplePeriod) {
+                        rippleTimer -= ripplePeriod;
+                    }
+                    
                     rippleIntensity *= 0.92; // Fast decay
                     if (rippleIntensity < 0.01) rippleIntensity = 0;
                     

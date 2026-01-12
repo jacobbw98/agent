@@ -1,0 +1,43 @@
+{
+  "zoom": {
+    "rate": 0.070,
+    "minLog": 0,
+    "maxLog": 20
+  },
+  "iteration": {
+    "baseCount": 300,
+    "maxCount": 1000,
+    "logMultiplier": 60
+  },
+  "animation": {
+    "morphRate": 0.5,
+    "powerBase": 1.2,
+    "powerRange": 0.2,
+    "panRadius": 0.01,
+    "panSpeed": 0.05
+  },
+  "steering": {
+    "smoothing": 0.97,
+    "strength": 0.015,
+    "probeRadius": 0.25,
+    "gradientThreshold": 0.05,
+    "probeIterations": 250,
+    "searchRadiusMultiplier": 4.0
+  },
+  "traps": {
+    "circleRadiusBase": 0.5,
+    "circleRadiusRange": 0.3,
+    "circleSpeed": 0.2,
+    "pointDistance": 0.3,
+    "pointSpeedX": 0.15,
+    "pointSpeedY": 0.18,
+    "lineSpeed": 0.1
+  },
+  "colors": {
+    "interiorBase": [0.02, 0.04, 0.12],
+    "glowCyan": [0.0, 0.8, 1.0],
+    "glowTeal": [0.2, 0.7, 0.8],
+    "glowMagenta": [0.8, 0.2, 1.0]
+  }
+}
+

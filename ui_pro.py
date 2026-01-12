@@ -449,15 +449,18 @@ if __name__ == "__main__":
             void main() { gl_Position = vec4(a_position, 0.0, 1.0); }
         `;
 
-        const fragmentShaderSource = `#version 300 es
+        const glslFragmentCode = `#version 300 es
             precision highp float;
             uniform vec2 u_resolution;
             uniform float u_time;
             uniform vec2 u_fixX_h;
             uniform vec2 u_fixY_h;
             uniform vec2 u_zoom;
+            uniform vec2 u_invZoom;  // 1/zoom computed in JS (float64) for deep zoom precision
+            uniform float u_maxIter;
             out vec4 fragColor;
 
+            // Double-single arithmetic for deep zoom precision
             vec2 ds_add(vec2 d1, vec2 d2) {
                 float s = d1.x + d2.x;
                 float t = (s - d1.x) - d2.x;
@@ -480,21 +483,108 @@ if __name__ == "__main__":
                 float s = p + (e + d1.x * d2.y + d1.y * d2.x);
                 return vec2(s, (p - s) + (e + d1.x * d2.y + d1.y * d2.x));
             }
-            vec3 palette(float t) {
-                vec3 a = vec3(0.015, 0.0, 0.05);   
-                vec3 b = vec3(0.1, 0.7, 0.95);   
-                vec3 c = vec3(1.0, 1.0, 1.0);
-                vec3 d = vec3(0.65, 0.35, 0.45); 
-                return a + b * cos(6.28318 * (c * t + d));
+
+            // Procedural noise functions for texture overlay
+            float hash(vec2 p) {
+                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
             }
-            float get_iter(vec2 screen_coord) {
+            float noise(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                           mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+            }
+            float fbm(vec2 p) {
+                float v = 0.0, a = 0.5;
+                mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
+                for (int i = 0; i < 5; i++) {
+                    v += a * noise(p);
+                    p = rot * p * 2.0;
+                    a *= 0.5;
+                }
+                return v;
+            }
+
+            // UNDERTALE WATERFALL PALETTE
+            vec3 palette(float t, float time) {
+                // Layer 1: Deep navy/indigo base
+                vec3 a1 = vec3(0.08, 0.08, 0.2);      // Dark navy base
+                vec3 b1 = vec3(0.1, 0.4, 0.6);        // Blue-cyan range
+                vec3 c1 = vec3(1.0, 1.0, 0.8);
+                vec3 d1 = vec3(0.5, 0.6, 0.7);
+                vec3 col1 = a1 + b1 * cos(6.28318 * (c1 * t + d1));
+                
+                // Layer 2: Cyan/teal water colors
+                vec3 a2 = vec3(0.0, 0.2, 0.3);        // Teal base
+                vec3 b2 = vec3(0.0, 0.5, 0.6);        // Cyan range
+                vec3 c2 = vec3(0.8, 1.0, 1.0);
+                vec3 d2 = vec3(0.3, 0.5, 0.6);
+                vec3 col2 = a2 + b2 * cos(6.28318 * (c2 * t * 1.2 + d2));
+                
+                // Layer 3: Magenta sparkle accents
+                vec3 a3 = vec3(0.15, 0.05, 0.2);      // Purple base
+                vec3 b3 = vec3(0.4, 0.1, 0.5);        // Magenta range
+                vec3 c3 = vec3(1.0, 0.8, 1.2);
+                vec3 d3 = vec3(0.6, 0.3, 0.7);
+                vec3 col3 = a3 + b3 * cos(6.28318 * (c3 * t * 0.8 + d3));
+                
+                // Blend: mostly cyan/navy with occasional magenta
+                float blend1 = 0.5 + 0.5 * sin(time * 0.12);
+                float blend2 = 0.3 + 0.2 * sin(time * 0.18 + 1.0);
+                return mix(mix(col1, col2, blend1 * 0.5), col3, blend2 * 0.25);
+            }
+
+            // Orbit trap data structure
+            struct OrbitData {
+                float iter;
+                float minDistCircle;   // Distance to circle trap
+                float minDistLine;     // Distance to line trap
+                float minDistPoint;    // Distance to point trap
+                float avgAngle;        // Average orbital angle
+                float finalMag;        // Final magnitude
+                vec2 lastZ;            // Last z value
+            };
+
+            // Main fractal iteration with orbit trap data collection
+            OrbitData get_iter_full(vec2 screen_coord) {
+                OrbitData data;
+                data.minDistCircle = 1e10;
+                data.minDistLine = 1e10;
+                data.minDistPoint = 1e10;
+                data.avgAngle = 0.0;
+                data.finalMag = 0.0;
+                data.lastZ = vec2(0.0);
+                
                 vec2 rel_uv = (screen_coord * 2.0 - u_resolution.xy) / u_resolution.y;
-                vec2 dx = ds_mul(vec2(rel_uv.x, 0.0), vec2(1.0 / u_zoom.x, 0.0));
-                vec2 dy = ds_mul(vec2(rel_uv.y, 0.0), vec2(1.0 / u_zoom.x, 0.0));
-                float max_iter = 180.0 + 45.0 * log(u_zoom.x + 1.0);
-                if (max_iter > 750.0) max_iter = 750.0;
-                for (float i = 0.0; i < 750.0; i++) {
+                // Use u_invZoom (computed in JS with float64) instead of 1.0/u_zoom.x for deep zoom precision
+                vec2 dx = ds_mul(vec2(rel_uv.x, 0.0), u_invZoom);
+                vec2 dy = ds_mul(vec2(rel_uv.y, 0.0), u_invZoom);
+                
+                float max_iter = u_maxIter;
+                
+                // ====== STABLE ANIMATED POWER ======
+                // Use narrow range centered on 2.0 with easing to stay stable
+                float rawOsc = sin(u_time * 0.08) * 0.5 + sin(u_time * 0.13) * 0.3;
+                // Easing: spend more time near 0, less at extremes
+                float easedOsc = sign(rawOsc) * pow(abs(rawOsc), 1.5);
+                // Final power: 2.0 to 2.25 range (very conservative)
+                float animatedPower = 1.2 + easedOsc * 0.15;
+                // Perturbation strength: how much the extra power affects the iteration
+                float perturbStrength = (animatedPower - 2.0) * 0.3;
+                
+                // Orbit trap parameters - animate them!
+                float trapCircleRadius = 0.5 + 0.3 * sin(u_time * 0.2);
+                vec2 trapPoint = vec2(0.3 * cos(u_time * 0.15), 0.3 * sin(u_time * 0.18));
+                float trapLineAngle = u_time * 0.1;
+                vec2 trapLineDir = vec2(cos(trapLineAngle), sin(trapLineAngle));
+                
+                float angleSum = 0.0;
+                
+                for (float i = 0.0; i < 4000.0; i++) {
                     if (i >= max_iter) break;
+                    
+                    // Standard high-precision z² iteration (this stays as the BASE)
                     vec2 fixX_dx = ds_mul(u_fixX_h, dx);
                     vec2 fixY_dy = ds_mul(u_fixY_h, dy);
                     vec2 fixX_dy = ds_mul(u_fixX_h, dy);
@@ -508,28 +598,278 @@ if __name__ == "__main__":
                     vec2 term1_y = ds_add(fixX_dy, fixY_dx);
                     term1_y = ds_add(term1_y, term1_y);
                     dy = ds_add(term1_y, ds_add(dxdy, dxdy));
+                    
+                    // Get current z from base iteration
                     float cur_x = dx.x + u_fixX_h.x;
                     float cur_y = dy.x + u_fixY_h.x;
-                    if (cur_x*cur_x + cur_y*cur_y > 1024.0) {
-                        float r2 = cur_x*cur_x + cur_y*cur_y;
-                        float nu = log2(log2(r2 + 0.00001) / 2.0);
-                        return i + 1.0 - nu;
+                    float mag = sqrt(cur_x * cur_x + cur_y * cur_y);
+                    
+                    // ====== PERTURBATION: Add small power correction ======
+                    // Only apply when magnitude is reasonable (avoids singularities)
+                    if (mag > 0.001 && mag < 100.0 && abs(perturbStrength) > 0.001) {
+                        float theta = atan(cur_y, cur_x);
+                        // Calculate the difference between z^p and z^2
+                        // z^p - z^2 = r^2 * (r^(p-2) * e^(i*(p-2)*theta) - 1)
+                        float extraPow = animatedPower - 2.0;
+                        float r_extra = pow(mag, extraPow);
+                        float theta_extra = extraPow * theta;
+                        
+                        // The perturbation is: r² * (r^(p-2) * (cos,sin)((p-2)*θ) - (1,0))
+                        float perturb_x = mag * mag * (r_extra * cos(theta_extra) - 1.0);
+                        float perturb_y = mag * mag * (r_extra * sin(theta_extra));
+                        
+                        // Apply perturbation with strength factor
+                        dx.x += perturb_x * perturbStrength;
+                        dy.x += perturb_y * perturbStrength;
+                        
+                        // Recalculate position after perturbation
+                        cur_x = dx.x + u_fixX_h.x;
+                        cur_y = dy.x + u_fixY_h.x;
+                        mag = sqrt(cur_x * cur_x + cur_y * cur_y);
+                    }
+                    
+                    vec2 z = vec2(cur_x, cur_y);
+                    
+                    // Collect orbit trap distances
+                    // Circle trap - distance to circle of given radius
+                    float distCircle = abs(mag - trapCircleRadius);
+                    data.minDistCircle = min(data.minDistCircle, distCircle);
+                    
+                    // Point trap - distance to animated point
+                    float distPoint = length(z - trapPoint);
+                    data.minDistPoint = min(data.minDistPoint, distPoint);
+                    
+                    // Line trap - distance to rotating line through origin
+                    float distLine = abs(dot(z, vec2(-trapLineDir.y, trapLineDir.x)));
+                    data.minDistLine = min(data.minDistLine, distLine);
+                    
+                    // Accumulate angle for spiral effect
+                    angleSum += atan(cur_y, cur_x);
+                    
+                    // Power-compensated escape radius
+                    float escapeR = 1.0 + 2.0 * animatedPower;
+                    if (mag > escapeR) {
+                        float r2 = mag * mag;
+                        // Normalized smooth iteration (accounts for variable power)
+                        float nu = log2(log2(r2 + 1.0) / log2(escapeR));
+                        data.iter = i + 1.0 - nu;
+                        data.avgAngle = angleSum / (i + 1.0);
+                        data.finalMag = mag;
+                        data.lastZ = z;
+                        return data;
+                    }
+                    data.lastZ = z;
+                }
+                data.iter = max_iter;
+                data.avgAngle = angleSum / max_iter;
+                data.finalMag = length(data.lastZ);
+                return data;
+            }
+
+            // Dark void effect (inverted glow - creates dark arms)
+            vec3 addGlow(vec3 col, float iter, float maxIter, OrbitData data) {
+                // Edge darkness - stronger near escape boundary
+                float edgeness = 1.0 - (iter / maxIter);
+                float glow = exp(-iter * 0.015) * 2.5;
+                
+                // Orbit trap darkness contributions
+                float circleGlow = exp(-data.minDistCircle * 8.0) * 0.6;
+                float pointGlow = exp(-data.minDistPoint * 12.0) * 0.8;
+                float lineGlow = exp(-data.minDistLine * 6.0) * 0.4;
+                
+                // Darken where there would be bright bands (inverted)
+                float totalDarkness = glow * 0.3 + circleGlow * 0.5 + pointGlow * 0.4 + lineGlow * 0.6;
+                
+                // Multiply to darken - Waterfall palette void colors
+                vec3 darkFactor = vec3(1.0) - vec3(0.05, 0.1, 0.15) * glow;        // Navy tinted darkness
+                darkFactor -= vec3(0.1, 0.25, 0.3) * circleGlow;    // Dark cyan void
+                darkFactor -= vec3(0.1, 0.2, 0.25) * pointGlow;     // Dark teal void
+                darkFactor -= vec3(0.15, 0.1, 0.25) * lineGlow;     // Dark indigo void
+                
+                // Clamp to prevent negative colors
+                darkFactor = max(darkFactor, vec3(0.03, 0.03, 0.08));
+                
+                return col * darkFactor;
+            }
+
+            // Second fractal layer (Burning Ship variation)
+            float burningShipLayer(vec2 screen_coord) {
+                vec2 rel_uv = (screen_coord * 2.0 - u_resolution.xy) / u_resolution.y;
+                vec2 c = rel_uv / u_zoom.x * 0.5 + vec2(-0.5, -0.5);
+                vec2 z = vec2(0.0);
+                
+                for (float i = 0.0; i < 100.0; i++) {
+                    z = vec2(abs(z.x), abs(z.y)); // Burning ship fold
+                    float x = z.x * z.x - z.y * z.y + c.x;
+                    float y = 2.0 * z.x * z.y + c.y;
+                    z = vec2(x, y);
+                    if (dot(z, z) > 256.0) {
+                        return i / 100.0;
                     }
                 }
-                return max_iter;
+                return 1.0;
             }
-            void main() {
-                float iter = get_iter(gl_FragCoord.xy);
-                vec3 col = vec3(0.0);
-                float max_iter = 180.0 + 45.0 * log(u_zoom.x + 1.0);
-                if (max_iter > 750.0) max_iter = 750.0;
-                if (iter < max_iter) {
-                    col = palette(iter * 0.02 + u_time * 0.008);
-                    col += vec3(0.15, 0.0, 0.35) * (2.0 / (iter * 0.04 + 0.1));
-                } else {
-                    col = vec3(0.015, 0.0, 0.05);
+
+            // Third layer - Mandelbrot with different parameters
+            float mandelbrotLayer(vec2 screen_coord) {
+                vec2 rel_uv = (screen_coord * 2.0 - u_resolution.xy) / u_resolution.y;
+                vec2 c = rel_uv / u_zoom.x * 0.3 + vec2(
+                    -0.7 + 0.1 * sin(u_time * 0.08),
+                    0.0 + 0.1 * cos(u_time * 0.11)
+                );
+                vec2 z = vec2(0.0);
+                
+                for (float i = 0.0; i < 80.0; i++) {
+                    float x = z.x * z.x - z.y * z.y + c.x;
+                    float y = 2.0 * z.x * z.y + c.y;
+                    z = vec2(x, y);
+                    if (dot(z, z) > 256.0) {
+                        return i / 80.0;
+                    }
                 }
-                fragColor = vec4(col, 1.0);
+                return 1.0;
+            }
+
+            void main() {
+                // 2x2 supersampling for anti-aliasing
+                vec3 totalCol = vec3(0.0);
+                float aa = 2.0;
+                
+                for (float ax = 0.0; ax < aa; ax++) {
+                    for (float ay = 0.0; ay < aa; ay++) {
+                        vec2 offset = (vec2(ax, ay) - 0.5 * (aa - 1.0)) / aa;
+                        vec2 sampleCoord = gl_FragCoord.xy + offset;
+                        
+                        // Get main fractal data with orbit traps
+                        OrbitData data = get_iter_full(sampleCoord);
+                        float iter = data.iter;
+                        
+                        float max_iter = 300.0 + 60.0 * log(u_zoom.x + 1.0);
+                        if (max_iter > 800.0) max_iter = 800.0;
+                        
+                        vec3 col = vec3(0.0);
+                        
+                        if (iter < max_iter) {
+                            // Base color from iteration count with enhanced palette
+                            col = palette(iter * 0.018 + u_time * 0.006, u_time);
+                            
+                            // Orbit trap coloring contributions
+                            float trapMix = 0.0;
+                            
+                            // Circle trap - bright cyan (waterfall glow)
+                            float circleInfluence = exp(-data.minDistCircle * 5.0);
+                            col = mix(col, vec3(0.0, 0.8, 1.0), circleInfluence * 0.4);
+                            
+                            // Point trap - teal/aqua
+                            float pointInfluence = exp(-data.minDistPoint * 8.0);
+                            col = mix(col, vec3(0.2, 0.7, 0.8), pointInfluence * 0.5);
+                            
+                            // Line trap - magenta sparkle
+                            float lineInfluence = exp(-data.minDistLine * 4.0);
+                            col = mix(col, vec3(0.8, 0.2, 1.0), lineInfluence * 0.3);
+                            
+                            // Angular coloring for spiral effect
+                            float angleFactor = 0.5 + 0.5 * sin(data.avgAngle * 3.0 + u_time * 0.5);
+                            col *= 0.8 + 0.2 * angleFactor;
+                            
+                            // Add glow effects
+                            col = addGlow(col, iter, max_iter, data);
+                            
+                            // Multi-layer fractal blending
+                            float burnLayer = burningShipLayer(sampleCoord);
+                            float mandLayer = mandelbrotLayer(sampleCoord);
+                            
+                            // Subtle overlay of secondary fractals
+                            vec3 burnColor = palette(burnLayer * 1.5 + 0.3, u_time) * 0.15;
+                            vec3 mandColor = palette(mandLayer * 2.0 + 0.5, u_time) * 0.1;
+                            
+                            col += burnColor * (0.3 + 0.2 * sin(u_time * 0.4));
+                            col += mandColor * (0.2 + 0.1 * cos(u_time * 0.35));
+                            
+                        } else {
+                            // ====== UNDERTALE WATERFALL INTERIOR ======
+                            vec2 uv = sampleCoord / u_resolution.xy;
+                            
+                            // Use the final orbit position for dynamic patterns
+                            vec2 lastZ = data.lastZ;
+                            float lastMag = length(lastZ);
+                            float lastAngle = atan(lastZ.y, lastZ.x);
+                            
+                            // Animated ripple patterns based on orbit (slowed down)
+                            float ripple1 = sin(lastMag * 15.0 + u_time * 0.8) * 0.5 + 0.5;
+                            float ripple2 = sin(lastAngle * 8.0 - u_time * 0.6) * 0.5 + 0.5;
+                            float ripple3 = sin((lastZ.x + lastZ.y) * 12.0 + u_time * 1.0) * 0.5 + 0.5;
+                            
+                            // Interference pattern
+                            float interference = sin(lastZ.x * 25.0) * sin(lastZ.y * 25.0);
+                            interference += sin((lastZ.x - lastZ.y) * 18.0 + u_time * 0.4);
+                            interference *= 0.5;
+                            
+                            // Waterfall base - deep navy blue
+                            vec3 nebulaBase = vec3(
+                                0.02 + 0.02 * sin(lastAngle * 3.0 + u_time * 0.15),
+                                0.04 + 0.03 * sin(lastMag * 5.0 + u_time * 0.2),
+                                0.12 + 0.06 * sin(lastAngle * 2.0 - u_time * 0.1)
+                            );
+                            
+                            // Waterfall ripple colors - cyan and blue tones
+                            col = nebulaBase;
+                            col += vec3(0.0, 0.08, 0.18) * ripple1;   // Deep blue ripple
+                            col += vec3(0.0, 0.15, 0.2) * ripple2;    // Cyan ripple
+                            col += vec3(0.02, 0.1, 0.15) * ripple3;   // Teal ripple
+                            col += vec3(0.0, 0.06, 0.12) * interference;
+                            
+                            // Bioluminescent glow - Waterfall style
+                            float circleGlow = exp(-data.minDistCircle * 2.0);
+                            float pointGlow = exp(-data.minDistPoint * 3.0);
+                            float lineGlow = exp(-data.minDistLine * 1.5);
+                            
+                            col += vec3(0.0, 0.4, 0.6) * circleGlow * 0.8;    // Cyan circle glow
+                            col += vec3(0.0, 0.6, 0.5) * pointGlow * 0.7;     // Teal point glow
+                            col += vec3(0.1, 0.3, 0.8) * lineGlow * 0.6;      // Blue line glow
+                            
+                            // Spiral arms - blue tones
+                            float spiral = sin(data.avgAngle * 5.0 + lastMag * 10.0 + u_time * 0.7);
+                            col += vec3(0.0, 0.12, 0.22) * (spiral * 0.5 + 0.5) * 0.4;
+                            
+                            // Slow, gentle breathing effect
+                            float pulse = 0.85 + 0.15 * sin(u_time * 0.5 + lastMag * 3.0);
+                            col *= pulse;
+                            
+                            // Nebula texture with waterfall feel
+                            float nebulaNoiseVal = fbm(lastZ * 3.0 + u_time * 0.03);
+                            col *= 0.75 + 0.4 * nebulaNoiseVal;
+                            
+                            // Edge glow - bright cyan near boundary
+                            float edgeDist = 1.0 - smoothstep(0.0, 2.0, lastMag);
+                            col += vec3(0.0, 0.2, 0.3) * edgeDist * 0.6;
+                        }
+                        
+                        // Noise overlay for texture
+                        vec2 noiseCoord = sampleCoord * 0.003 + vec2(u_time * 0.02, u_time * 0.015);
+                        float n = fbm(noiseCoord);
+                        col *= 0.92 + 0.08 * n;  // Subtle texture
+                        
+                        // Additional fine grain noise
+                        float grain = hash(sampleCoord + u_time * 100.0);
+                        col += (grain - 0.5) * 0.015;
+                        
+                        // Vignette effect
+                        vec2 vignetteUV = sampleCoord / u_resolution.xy - 0.5;
+                        float vignette = 1.0 - dot(vignetteUV, vignetteUV) * 0.5;
+                        col *= vignette;
+                        
+                        totalCol += col;
+                    }
+                }
+                
+                totalCol /= (aa * aa);
+                
+                // Final tone mapping and color grading
+                totalCol = pow(totalCol, vec3(0.95));  // Slight gamma
+                totalCol = mix(totalCol, totalCol * vec3(1.1, 1.0, 1.15), 0.2);  // Color grade
+                
+                fragColor = vec4(clamp(totalCol, 0.0, 1.0), 1.0);
             }
         `;
 
@@ -547,13 +887,31 @@ if __name__ == "__main__":
                 const s = gl.createShader(type);
                 gl.shaderSource(s, source);
                 gl.compileShader(s);
+                if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                    console.error("Shader Compile Error:", gl.getShaderInfoLog(s));
+                    gl.deleteShader(s);
+                    return null;
+                }
                 return s;
             }
 
             const program = gl.createProgram();
-            gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vertexShaderSource));
-            gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource));
+            console.log("DEBUG: Creating VS");
+            const vs = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
+            console.log("DEBUG: Creating FS");
+            const fs = createShader(gl, gl.FRAGMENT_SHADER, glslFragmentCode);
+            if (!vs || !fs) { console.error("DEBUG: Shader creation failed"); return; }
+            
+            console.log("DEBUG: Attaching shaders");
+            gl.attachShader(program, vs);
+            gl.attachShader(program, fs);
             gl.linkProgram(program);
+            
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                 console.error("Program Link Error:", gl.getProgramInfoLog(program));
+                 return;
+            }
+            console.log("DEBUG: Link success, using program");
             gl.useProgram(program);
 
             const locRes = gl.getUniformLocation(program, "u_resolution");
@@ -561,6 +919,8 @@ if __name__ == "__main__":
             const locFXH = gl.getUniformLocation(program, "u_fixX_h");
             const locFYH = gl.getUniformLocation(program, "u_fixY_h");
             const locZoom = gl.getUniformLocation(program, "u_zoom");
+            const locInvZoom = gl.getUniformLocation(program, "u_invZoom");
+            const locMaxIter = gl.getUniformLocation(program, "u_maxIter");
 
             const buffer = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -569,31 +929,33 @@ if __name__ == "__main__":
             gl.enableVertexAttribArray(pos);
             gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
 
+            // ===== CONFIGURABLE PARAMETERS =====
+            // These can be tuned via fractal_config.json
+            let cfg = {
+                zoom: { rate: 0.075, minLog: 0, maxLog: 15, deadspaceThresholdSeconds: 0.5, reverseSlowdown: 0.95, minZoomOutDistance: 2.5 },
+                iteration: { baseCount: 300, maxCount: 1000, logMultiplier: 60 },
+                animation: { morphRate: 0.12, powerBase: 1.2, powerRange: 0.2, panRadius: 0.01, panSpeed: 0.15 },
+                steering: { smoothing: 0.97, strength: 0.015, probeRadius: 0.25, gradientThreshold: 0.05, probeIterations: 250, searchRadiusMultiplier: 4.0 },
+                traps: { circleRadiusBase: 0.5, circleRadiusRange: 0.3, circleSpeed: 0.2, pointDistance: 0.3, pointSpeedX: 0.15, pointSpeedY: 0.18, lineSpeed: 0.1 }
+            };
+            
+            // Load config from file (async, non-blocking)
+            fetch('/file=fractal_config.json').then(r => r.json()).then(c => { cfg = {...cfg, ...c}; console.log('Fractal config loaded:', cfg); }).catch(() => console.log('Using default fractal config'));
+
             const startTime = Date.now();
             let currentZoomLog = 0;  // Start zoomed out
-            let zoomDirection = 1.0; // Start zooming IN
-            let targetZoomRate = 0.075;
-            let actualZoomRate = 0.075;
-            let deadSpaceTime = 0;
+            let actualZoomRate = cfg.zoom.rate;
+            
+            // Smooth steering state - heavily smoothed for seamless motion
+            let steerX = 0, steerY = 0;  // Current steering offset (smoothed)
+            let targetSteerX = 0, targetSteerY = 0;  // Target steering direction
+            const steerSmoothing = 0.97;  // High value = very smooth transitions
+            const steerStrength = 0.015;  // How strongly to steer toward complexity
 
             function splitDouble(d) {
                 const hi = Math.fround(d);
                 const lo = d - hi;
                 return [hi, lo];
-            }
-
-            // CPU probe to detect dead space
-            function cpuIter(fx, fy, ux, uy) {
-                let dx = ux, dy = uy;
-                let max_iter = 180 + 45 * Math.log(Math.exp(currentZoomLog) + 1);
-                if (max_iter > 750) max_iter = 750;
-                for (let i = 0; i < max_iter; i++) {
-                    let n_dx = 2 * (fx * dx - fy * dy) + (dx * dx - dy * dy);
-                    let n_dy = 2 * (fx * dy + fy * dx) + 2 * dx * dy;
-                    dx = n_dx; dy = n_dy;
-                    if ((dx + fx) * (dx + fx) + (dy + fy) * (dy + fy) > 1024) return i;
-                }
-                return max_iter;
             }
 
             function render() {
@@ -607,11 +969,12 @@ if __name__ == "__main__":
                     gl.viewport(0, 0, canvas.width, canvas.height);
                 }
 
-                // Morphing Julia set constant
-                const morphRate = 0.035;
+                // Morphing Julia set - pure mathematical path, no CPU probing
+                const morphRate = cfg.animation.morphRate;
                 const phi = time * morphRate;
-                const cx = 0.35 * Math.cos(phi) - 0.1 * Math.cos(2.0 * phi);
-                const cy = 0.35 * Math.sin(phi) - 0.1 * Math.sin(2.0 * phi);
+                const spiralRadius = 0.35 - 0.08 * Math.sin(phi * 0.7);
+                const cx = spiralRadius * Math.cos(phi) - 0.1 * Math.cos(2.0 * phi + 0.3);
+                const cy = spiralRadius * Math.sin(phi) - 0.1 * Math.sin(2.0 * phi + 0.3);
                 const wx = 1.0 - 4.0 * cx;
                 const wy = -4.0 * cy;
                 const r_w = Math.sqrt(wx * wx + wy * wy);
@@ -621,38 +984,23 @@ if __name__ == "__main__":
                 let fixX = (1.0 + sx) * 0.5;
                 let fixY = sy * 0.5;
 
+                // Constant zoom rate - no CPU probing needed
+                currentZoomLog += cfg.zoom.rate * 0.016;
                 const zoom = Math.exp(currentZoomLog);
-                
-                // Probe for dead space
-                const samples = [[0, 0], [0.1, 0.1], [-0.1, -0.1], [0.1, -0.1], [-0.1, 0.1]];
-                let max_hits = 0;
-                samples.forEach(s => {
-                    let it = cpuIter(fixX, fixY, s[0] / zoom, s[1] / zoom);
-                    if (it >= 745) max_hits++;
-                });
 
-                // Bounce logic - zoom out when dead space detected
-                if (max_hits >= 5) {
-                    deadSpaceTime += 0.016;
-                    if (deadSpaceTime > 1.5) zoomDirection = -1.0;
-                } else {
-                    deadSpaceTime = 0;
-                    if (zoomDirection < 0 && currentZoomLog < 2) zoomDirection = 1.0; // Resume zoom-in
-                }
-
-                actualZoomRate = actualZoomRate * 0.98 + (targetZoomRate * zoomDirection) * 0.02;
-                currentZoomLog += actualZoomRate * 0.016;
-
-                // Gentle pan
-                const panRadius = 0.01 / zoom;
-                fixX += panRadius * Math.cos(time * 0.15);
-                fixY += panRadius * Math.sin(time * 0.15);
+                // Dynamic max iterations for GPU - auto-scale to prevent pixelation
+                // Formula: Base + Multiplier * ZoomLog
+                let gpuMaxIter = cfg.iteration.baseCount + cfg.iteration.logMultiplier * currentZoomLog;
+                // Cap at shader hard limit (4000)
+                if (gpuMaxIter > 4000) gpuMaxIter = 4000;
 
                 gl.uniform2f(locRes, canvas.width, canvas.height);
                 gl.uniform1f(locTime, time);
                 gl.uniform2fv(locFXH, splitDouble(fixX));
                 gl.uniform2fv(locFYH, splitDouble(fixY));
                 gl.uniform2fv(locZoom, splitDouble(zoom));
+                gl.uniform2fv(locInvZoom, splitDouble(1.0 / zoom));  // Compute 1/zoom in JS (float64) for precision
+                gl.uniform1f(locMaxIter, gpuMaxIter);
 
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
                 requestAnimationFrame(render);
@@ -670,5 +1018,6 @@ if __name__ == "__main__":
     """
     import os
     music_dir = os.path.join(os.path.dirname(__file__), "Music")
-    demo.launch(share=False, server_name="127.0.0.1", server_port=7860, theme=theme, css=css, js=js, allowed_paths=[music_dir])
+    config_path = os.path.join(os.path.dirname(__file__), "fractal_config.json")
+    demo.launch(share=False, server_name="127.0.0.1", server_port=7860, theme=theme, css=css, js=js, allowed_paths=[music_dir, config_path])
 

@@ -988,9 +988,9 @@ if __name__ == "__main__":
             let centerY = 0;
             let centerVelX = 0;  // Velocity for momentum
             let centerVelY = 0;
-            let targetCenterX = 0;
             let targetCenterY = 0;
             let centerInitialized = false;
+            let stdDevHistory = [400, 400, 400]; // Rolling history of last 3 stdDevs
             
             // SMOOTH TRANSITIONS
             let smoothPauseFactor = 1.0;     // 1.0 = normal speed, 0.5 = paused
@@ -1004,7 +1004,8 @@ if __name__ == "__main__":
             
             // STUCK DETECTION - escape when screen is solid color for too long
             let stuckTimer = 0;              // How long we've been in solid color
-            const stuckThreshold = 3.0;      // Seconds before triggering escape (reduced from 5)
+            const stuckThreshold = 0.1;      // Seconds before triggering escape (0.1 per user request)
+            let stuckZoomOutTimer = 0;       // Seconds to zoom out for recovery
             let isInsideFractal = false;     // true = stuck inside (dark), false = stuck outside (escaping fast)
             let escapeVelX = 0;              // Corrective velocity to escape
             let escapeVelY = 0;
@@ -1130,26 +1131,46 @@ if __name__ == "__main__":
                 ];
                 
                 // Get iteration counts for each probe
-                const probeIters = probePoints.map(p => probeEscapes(p[0], p[1], boundaryIter));
+                // IMPROVEMENT: Use higher iteration count for quality check to see deeper structure
+                const qualityIter = 1000;
+                const probeIters = probePoints.map(p => probeEscapes(p[0], p[1], qualityIter));
                 
                 // Calculate variance in iteration counts - high variance = good boundary detail
                 const meanIter = probeIters.reduce((a, b) => a + b, 0) / probeIters.length;
                 const variance = probeIters.reduce((sum, i) => sum + (i - meanIter) ** 2, 0) / probeIters.length;
                 const stdDev = Math.sqrt(variance);
                 
+                // ROLLING AVERAGE (size 3) - as requested by user
+                stdDevHistory.push(stdDev);
+                if (stdDevHistory.length > 3) stdDevHistory.shift();
+                const avgStdDev = stdDevHistory.reduce((a, b) => a + b, 0) / stdDevHistory.length;
+                
+                // FORCE STUCK if we are hitting iteration limits (solid black inside or solid outside)
+                const isTooDeep = meanIter > qualityIter * 0.95;  // Stuck deep inside set
+                const isTooShallow = meanIter < 15;               // Stuck far outside set
+                
                 // ADAPTIVE ZOOM PAUSE: If variance is too low, pause zoom until edges reappear
-                const minVarianceThreshold = 10;  // Minimum std deviation needed to continue zoom
-                const hasGoodBoundary = stdDev > minVarianceThreshold;
+                const minVarianceThreshold = 400;  // Threshold
+                
+                // Good boundary requires:
+                // 1. High variance (detail)
+                // 2. Not stuck deep inside (max iters)
+                // 3. Not stuck far outside (min iters)
+                const hasGoodBoundary = (avgStdDev > minVarianceThreshold) && !isTooDeep && !isTooShallow;
                 isZoomPaused = !hasGoodBoundary;
                 
                 // DEBUG: Log every 60 frames (~1 sec) to trace stuck detection
                 if (Math.floor(accumulatedTime * 60) % 60 === 0) {
-                    console.log(`Boundary check: stdDev=${stdDev.toFixed(2)}, hasGood=${hasGoodBoundary}, stuckTimer=${stuckTimer.toFixed(1)}s, meanIter=${meanIter.toFixed(0)}`);
+                    console.log(`Boundary check: avgStdDev=${avgStdDev.toFixed(2)} (raw=${stdDev.toFixed(2)}), mean=${meanIter.toFixed(0)}, deep=${isTooDeep}, shallow=${isTooShallow}, stuckTimer=${stuckTimer.toFixed(1)}s`);
                 }
                 
                 // ===== STUCK DETECTION & ESCAPE =====
                 // If screen is solid color for stuckThreshold seconds, apply corrective velocity
-                if (!hasGoodBoundary) {
+                
+                // GRACE PERIOD: No stuck recovery in first 20s
+                if (accumulatedTime < 20.0) {
+                    stuckTimer = 0;
+                } else if (!hasGoodBoundary) {
                     stuckTimer += smoothedDelta;
                     
                     // Determine if we're stuck inside fractal (high iter = didn't escape = inside)
@@ -1157,6 +1178,11 @@ if __name__ == "__main__":
                     isInsideFractal = meanIter > boundaryIter * 0.8;  // Most points didn't escape
                     
                     if (stuckTimer > stuckThreshold) {
+                        // TRIGGER 20s ZOOM-OUT RECOVERY
+                        stuckZoomOutTimer = 20.0;
+                        stuckTimer = 0;
+                        console.log("STUCK! Triggering 20s Zoom-Out Recovery");
+                        
                         // Create escape velocity based on position relative to origin
                         const distFromOrigin = Math.sqrt(centerX * centerX + centerY * centerY);
                         // DON'T scale by zoom - we want strong escape regardless of zoom level
@@ -1209,8 +1235,22 @@ if __name__ == "__main__":
                     clampedZoomRate = 0;  // Hard stop
                 }
                 
+                // ZOOM-OUT RECOVERY OVERRIDE
+                let effectiveZoomDirection = zoomDirection;
+                if (stuckZoomOutTimer > 0) {
+                    stuckZoomOutTimer -= smoothedDelta;
+                    effectiveZoomDirection = -1; // Force zoom out
+                    clampedZoomRate = cfg.zoom.rate * 4.0; // EVEN FASTER zoom out (4x instead of 2x)
+                    
+                    // IMPORTANT: When zooming out for recovery, we DON'T care if boundary is "good" or not
+                    // we just want to get out. So this override is final.
+                    if (stuckZoomOutTimer <= 0) {
+                        console.log("Zoom-Out Recovery complete. Resuming normal zoom.");
+                    }
+                }
+                
                 // Accumulate zoom with smooth rate
-                accumulatedZoomLog += clampedZoomRate * smoothedDelta * zoomDirection;
+                accumulatedZoomLog += clampedZoomRate * smoothedDelta * effectiveZoomDirection;
                 
                 // Re-check zoom bounds after accumulation
                 if (accumulatedZoomLog >= cfg.zoom.maxLog) {

@@ -210,7 +210,7 @@ def create_pro_ui():
     )
     
     css = """
-    body, .gradio-container {
+    html, body, .gradio-container {
         background: transparent !important;
     }
     #fractal-canvas {
@@ -506,33 +506,33 @@ if __name__ == "__main__":
                 return v;
             }
 
-            // UNDERTALE WATERFALL PALETTE
+            // UNDERTALE WATERFALL PALETTE - Matches reference image
             vec3 palette(float t, float time) {
-                // Layer 1: Deep navy/indigo base
-                vec3 a1 = vec3(0.08, 0.08, 0.2);      // Dark navy base
-                vec3 b1 = vec3(0.1, 0.4, 0.6);        // Blue-cyan range
-                vec3 c1 = vec3(1.0, 1.0, 0.8);
+                // Primary: Very deep navy/indigo (almost black)
+                vec3 a1 = vec3(0.02, 0.02, 0.08);      // Near-black navy
+                vec3 b1 = vec3(0.05, 0.15, 0.35);     // Subtle blue range
+                vec3 c1 = vec3(1.0, 1.0, 1.0);
                 vec3 d1 = vec3(0.5, 0.6, 0.7);
                 vec3 col1 = a1 + b1 * cos(6.28318 * (c1 * t + d1));
                 
-                // Layer 2: Cyan/teal water colors
-                vec3 a2 = vec3(0.0, 0.2, 0.3);        // Teal base
-                vec3 b2 = vec3(0.0, 0.5, 0.6);        // Cyan range
+                // Secondary: Bright cyan/turquoise water glow
+                vec3 a2 = vec3(0.0, 0.3, 0.5);        // Cyan base
+                vec3 b2 = vec3(0.0, 0.6, 0.7);        // Bright cyan range
                 vec3 c2 = vec3(0.8, 1.0, 1.0);
-                vec3 d2 = vec3(0.3, 0.5, 0.6);
-                vec3 col2 = a2 + b2 * cos(6.28318 * (c2 * t * 1.2 + d2));
+                vec3 d2 = vec3(0.2, 0.4, 0.5);
+                vec3 col2 = a2 + b2 * cos(6.28318 * (c2 * t * 1.1 + d2));
                 
-                // Layer 3: Magenta sparkle accents
-                vec3 a3 = vec3(0.15, 0.05, 0.2);      // Purple base
-                vec3 b3 = vec3(0.4, 0.1, 0.5);        // Magenta range
+                // Accent: Purple/magenta sparkles (subtle)
+                vec3 a3 = vec3(0.08, 0.02, 0.15);      // Dark purple
+                vec3 b3 = vec3(0.3, 0.05, 0.4);        // Magenta accent
                 vec3 c3 = vec3(1.0, 0.8, 1.2);
-                vec3 d3 = vec3(0.6, 0.3, 0.7);
-                vec3 col3 = a3 + b3 * cos(6.28318 * (c3 * t * 0.8 + d3));
+                vec3 d3 = vec3(0.7, 0.3, 0.8);
+                vec3 col3 = a3 + b3 * cos(6.28318 * (c3 * t * 0.7 + d3));
                 
-                // Blend: mostly cyan/navy with occasional magenta
-                float blend1 = 0.5 + 0.5 * sin(time * 0.12);
-                float blend2 = 0.3 + 0.2 * sin(time * 0.18 + 1.0);
-                return mix(mix(col1, col2, blend1 * 0.5), col3, blend2 * 0.25);
+                // Blend: heavily favor dark navy, with cyan edges, rare magenta
+                float blend1 = 0.3 + 0.2 * sin(time * 0.08);
+                float blend2 = 0.15 + 0.1 * sin(time * 0.12 + 2.0);
+                return mix(mix(col1, col2, blend1), col3, blend2 * 0.15);
             }
 
             // Orbit trap data structure
@@ -547,6 +547,7 @@ if __name__ == "__main__":
             };
 
             // Main fractal iteration with orbit trap data collection
+            // USES RESCALING to prevent underflow at deep zoom
             OrbitData get_iter_full(vec2 screen_coord) {
                 OrbitData data;
                 data.minDistCircle = 1e10;
@@ -561,19 +562,25 @@ if __name__ == "__main__":
                 vec2 dx = ds_mul(vec2(rel_uv.x, 0.0), u_invZoom);
                 vec2 dy = ds_mul(vec2(rel_uv.y, 0.0), u_invZoom);
                 
+                // RESCALING: Track scale factor S such that w = z/S, d = c/S
+                // When |w| gets too small, we rescale to keep it near 1
+                float scaleFactor = 1.0;  // S in the theory - starts at 1
+                float logScale = 0.0;     // log2(scaleFactor) tracked for precision
+                
+                // Rescale thresholds
+                const float RESCALE_THRESHOLD_LOW = 1e-6;   // Rescale up when below this
+                const float RESCALE_THRESHOLD_HIGH = 1e6;   // Rescale down when above this
+                const float RESCALE_FACTOR = 1e4;           // Factor to rescale by
+                
                 float max_iter = u_maxIter;
                 
                 // ====== STABLE ANIMATED POWER ======
-                // Use narrow range centered on 2.0 with easing to stay stable
                 float rawOsc = sin(u_time * 0.08) * 0.5 + sin(u_time * 0.13) * 0.3;
-                // Easing: spend more time near 0, less at extremes
                 float easedOsc = sign(rawOsc) * pow(abs(rawOsc), 1.5);
-                // Final power: 2.0 to 2.25 range (very conservative)
                 float animatedPower = 1.2 + easedOsc * 0.15;
-                // Perturbation strength: how much the extra power affects the iteration
                 float perturbStrength = (animatedPower - 2.0) * 0.3;
                 
-                // Orbit trap parameters - animate them!
+                // Orbit trap parameters
                 float trapCircleRadius = 0.5 + 0.3 * sin(u_time * 0.2);
                 vec2 trapPoint = vec2(0.3 * cos(u_time * 0.15), 0.3 * sin(u_time * 0.18));
                 float trapLineAngle = u_time * 0.1;
@@ -584,7 +591,29 @@ if __name__ == "__main__":
                 for (float i = 0.0; i < 4000.0; i++) {
                     if (i >= max_iter) break;
                     
-                    // Standard high-precision z² iteration (this stays as the BASE)
+                    // ====== RESCALING CHECK ======
+                    // Check if dx/dy magnitude is getting too small (underflow risk)
+                    float deltaMag = sqrt(dx.x * dx.x + dy.x * dy.x);
+                    if (deltaMag > 0.0 && deltaMag < RESCALE_THRESHOLD_LOW) {
+                        // Rescale UP: multiply dx, dy by RESCALE_FACTOR to prevent underflow
+                        dx.x *= RESCALE_FACTOR;
+                        dx.y *= RESCALE_FACTOR;
+                        dy.x *= RESCALE_FACTOR;
+                        dy.y *= RESCALE_FACTOR;
+                        scaleFactor /= RESCALE_FACTOR;  // Track inverse scale
+                        logScale -= log2(RESCALE_FACTOR);
+                    } else if (deltaMag > RESCALE_THRESHOLD_HIGH) {
+                        // Rescale DOWN: divide dx, dy by RESCALE_FACTOR to prevent overflow
+                        dx.x /= RESCALE_FACTOR;
+                        dx.y /= RESCALE_FACTOR;
+                        dy.x /= RESCALE_FACTOR;
+                        dy.y /= RESCALE_FACTOR;
+                        scaleFactor *= RESCALE_FACTOR;
+                        logScale += log2(RESCALE_FACTOR);
+                    }
+                    
+                    // Standard high-precision z² iteration
+                    // Note: The DS arithmetic now operates on rescaled values
                     vec2 fixX_dx = ds_mul(u_fixX_h, dx);
                     vec2 fixY_dy = ds_mul(u_fixY_h, dy);
                     vec2 fixX_dy = ds_mul(u_fixX_h, dy);
@@ -594,63 +623,71 @@ if __name__ == "__main__":
                     vec2 dxdy = ds_mul(dx, dy);
                     vec2 term1_x = ds_sub(fixX_dx, fixY_dy);
                     term1_x = ds_add(term1_x, term1_x);
+                    
+                    // When S != 1, the dx² terms are scaled by S²
+                    // We need to divide by S to compensate: dx = (2*fixX*dx + dx²) but dx²/S
+                    if (abs(scaleFactor - 1.0) > 0.001) {
+                        dx2.x *= scaleFactor;
+                        dx2.y *= scaleFactor;
+                        dy2.x *= scaleFactor;
+                        dy2.y *= scaleFactor;
+                        dxdy.x *= scaleFactor;
+                        dxdy.y *= scaleFactor;
+                    }
+                    
                     dx = ds_add(term1_x, ds_sub(dx2, dy2));
                     vec2 term1_y = ds_add(fixX_dy, fixY_dx);
                     term1_y = ds_add(term1_y, term1_y);
                     dy = ds_add(term1_y, ds_add(dxdy, dxdy));
                     
-                    // Get current z from base iteration
-                    float cur_x = dx.x + u_fixX_h.x;
-                    float cur_y = dy.x + u_fixY_h.x;
-                    float mag = sqrt(cur_x * cur_x + cur_y * cur_y);
+                    // Get current z using FULL Double-Single precision
+                    // Apply inverse scale to get true z values for escape check
+                    vec2 z_ds_x = ds_add(ds_mul(dx, vec2(scaleFactor, 0.0)), u_fixX_h);
+                    vec2 z_ds_y = ds_add(ds_mul(dy, vec2(scaleFactor, 0.0)), u_fixY_h);
+                    
+                    // High-precision magnitude squared: mag2 = zx^2 + zy^2
+                    vec2 mag2 = ds_add(ds_mul(z_ds_x, z_ds_x), ds_mul(z_ds_y, z_ds_y));
+                    float mag = sqrt(max(0.0, mag2.x));
                     
                     // ====== PERTURBATION: Add small power correction ======
-                    // Only apply when magnitude is reasonable (avoids singularities)
                     if (mag > 0.001 && mag < 100.0 && abs(perturbStrength) > 0.001) {
-                        float theta = atan(cur_y, cur_x);
-                        // Calculate the difference between z^p and z^2
-                        // z^p - z^2 = r^2 * (r^(p-2) * e^(i*(p-2)*theta) - 1)
+                        float theta = atan(z_ds_y.x, z_ds_x.x);
                         float extraPow = animatedPower - 2.0;
                         float r_extra = pow(mag, extraPow);
                         float theta_extra = extraPow * theta;
                         
-                        // The perturbation is: r² * (r^(p-2) * (cos,sin)((p-2)*θ) - (1,0))
                         float perturb_x = mag * mag * (r_extra * cos(theta_extra) - 1.0);
                         float perturb_y = mag * mag * (r_extra * sin(theta_extra));
                         
-                        // Apply perturbation with strength factor
-                        dx.x += perturb_x * perturbStrength;
-                        dy.x += perturb_y * perturbStrength;
+                        // Apply perturbation in scaled space
+                        dx.x += perturb_x * perturbStrength / scaleFactor;
+                        dy.x += perturb_y * perturbStrength / scaleFactor;
                         
-                        // Recalculate position after perturbation
-                        cur_x = dx.x + u_fixX_h.x;
-                        cur_y = dy.x + u_fixY_h.x;
-                        mag = sqrt(cur_x * cur_x + cur_y * cur_y);
+                        // Recalculate z after perturbation
+                        z_ds_x = ds_add(ds_mul(dx, vec2(scaleFactor, 0.0)), u_fixX_h);
+                        z_ds_y = ds_add(ds_mul(dy, vec2(scaleFactor, 0.0)), u_fixY_h);
+                        mag2 = ds_add(ds_mul(z_ds_x, z_ds_x), ds_mul(z_ds_y, z_ds_y));
+                        mag = sqrt(max(0.0, mag2.x));
                     }
                     
-                    vec2 z = vec2(cur_x, cur_y);
+                    vec2 z = vec2(z_ds_x.x, z_ds_y.x);
                     
                     // Collect orbit trap distances
-                    // Circle trap - distance to circle of given radius
                     float distCircle = abs(mag - trapCircleRadius);
                     data.minDistCircle = min(data.minDistCircle, distCircle);
                     
-                    // Point trap - distance to animated point
                     float distPoint = length(z - trapPoint);
                     data.minDistPoint = min(data.minDistPoint, distPoint);
                     
-                    // Line trap - distance to rotating line through origin
                     float distLine = abs(dot(z, vec2(-trapLineDir.y, trapLineDir.x)));
                     data.minDistLine = min(data.minDistLine, distLine);
                     
-                    // Accumulate angle for spiral effect
-                    angleSum += atan(cur_y, cur_x);
+                    angleSum += atan(z_ds_y.x, z_ds_x.x);
                     
-                    // Power-compensated escape radius
+                    // Escape check using high-precision magnitude squared
                     float escapeR = 1.0 + 2.0 * animatedPower;
-                    if (mag > escapeR) {
-                        float r2 = mag * mag;
-                        // Normalized smooth iteration (accounts for variable power)
+                    if (mag2.x > escapeR * escapeR) {
+                        float r2 = mag2.x;
                         float nu = log2(log2(r2 + 1.0) / log2(escapeR));
                         data.iter = i + 1.0 - nu;
                         data.avgAngle = angleSum / (i + 1.0);
@@ -744,12 +781,11 @@ if __name__ == "__main__":
                         OrbitData data = get_iter_full(sampleCoord);
                         float iter = data.iter;
                         
-                        float max_iter = 300.0 + 60.0 * log(u_zoom.x + 1.0);
-                        if (max_iter > 800.0) max_iter = 800.0;
+                        float max_iter_comp = u_maxIter;
                         
                         vec3 col = vec3(0.0);
                         
-                        if (iter < max_iter) {
+                        if (iter < max_iter_comp - 0.5) {
                             // Base color from iteration count with enhanced palette
                             col = palette(iter * 0.018 + u_time * 0.006, u_time);
                             
@@ -773,7 +809,7 @@ if __name__ == "__main__":
                             col *= 0.8 + 0.2 * angleFactor;
                             
                             // Add glow effects
-                            col = addGlow(col, iter, max_iter, data);
+                            col = addGlow(col, iter, max_iter_comp, data);
                             
                             // Multi-layer fractal blending
                             float burnLayer = burningShipLayer(sampleCoord);
@@ -805,19 +841,19 @@ if __name__ == "__main__":
                             interference += sin((lastZ.x - lastZ.y) * 18.0 + u_time * 0.4);
                             interference *= 0.5;
                             
-                            // Waterfall base - deep navy blue
+                            // Waterfall base - very deep navy (near black)
                             vec3 nebulaBase = vec3(
-                                0.02 + 0.02 * sin(lastAngle * 3.0 + u_time * 0.15),
-                                0.04 + 0.03 * sin(lastMag * 5.0 + u_time * 0.2),
-                                0.12 + 0.06 * sin(lastAngle * 2.0 - u_time * 0.1)
+                                0.01 + 0.01 * sin(lastAngle * 3.0 + u_time * 0.15),
+                                0.02 + 0.02 * sin(lastMag * 5.0 + u_time * 0.2),
+                                0.06 + 0.04 * sin(lastAngle * 2.0 - u_time * 0.1)
                             );
                             
-                            // Waterfall ripple colors - cyan and blue tones
+                            // Waterfall ripple colors - subtle cyan and blue tones
                             col = nebulaBase;
-                            col += vec3(0.0, 0.08, 0.18) * ripple1;   // Deep blue ripple
-                            col += vec3(0.0, 0.15, 0.2) * ripple2;    // Cyan ripple
-                            col += vec3(0.02, 0.1, 0.15) * ripple3;   // Teal ripple
-                            col += vec3(0.0, 0.06, 0.12) * interference;
+                            col += vec3(0.0, 0.04, 0.1) * ripple1;    // Deep blue ripple
+                            col += vec3(0.0, 0.08, 0.12) * ripple2;   // Cyan ripple
+                            col += vec3(0.01, 0.05, 0.08) * ripple3;  // Teal ripple
+                            col += vec3(0.0, 0.03, 0.06) * interference;
                             
                             // Bioluminescent glow - Waterfall style
                             float circleGlow = exp(-data.minDistCircle * 2.0);
@@ -836,9 +872,9 @@ if __name__ == "__main__":
                             float pulse = 0.85 + 0.15 * sin(u_time * 0.5 + lastMag * 3.0);
                             col *= pulse;
                             
-                            // Nebula texture with waterfall feel
+                            // Nebula texture with waterfall feel - INCREASED BRIGHTNESS
                             float nebulaNoiseVal = fbm(lastZ * 3.0 + u_time * 0.03);
-                            col *= 0.75 + 0.4 * nebulaNoiseVal;
+                            col *= 1.2 + 0.6 * nebulaNoiseVal;
                             
                             // Edge glow - bright cyan near boundary
                             float edgeDist = 1.0 - smoothstep(0.0, 2.0, lastMag);
@@ -880,7 +916,7 @@ if __name__ == "__main__":
             Object.assign(canvas.style, { position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh', zIndex: '-1', pointerEvents: 'none' });
             document.body.appendChild(canvas);
             
-            const gl = canvas.getContext('webgl2');
+            const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
             if (!gl) return;
 
             function createShader(gl, type, source) {
@@ -932,7 +968,7 @@ if __name__ == "__main__":
             // ===== CONFIGURABLE PARAMETERS =====
             // These can be tuned via fractal_config.json
             let cfg = {
-                zoom: { rate: 0.075, minLog: 0, maxLog: 15, deadspaceThresholdSeconds: 0.5, reverseSlowdown: 0.95, minZoomOutDistance: 2.5 },
+                zoom: { rate: 0.03, minLog: 0, maxLog: 10, deadspaceThresholdSeconds: 0.5, reverseSlowdown: 0.95, minZoomOutDistance: 2.5 },
                 iteration: { baseCount: 300, maxCount: 1000, logMultiplier: 60 },
                 animation: { morphRate: 0.12, powerBase: 1.2, powerRange: 0.2, panRadius: 0.01, panSpeed: 0.15 },
                 steering: { smoothing: 0.97, strength: 0.015, probeRadius: 0.25, gradientThreshold: 0.05, probeIterations: 250, searchRadiusMultiplier: 4.0 },
@@ -945,12 +981,34 @@ if __name__ == "__main__":
             const startTime = Date.now();
             let currentZoomLog = 0;  // Start zoomed out
             let actualZoomRate = cfg.zoom.rate;
+            let zoomDirection = 1;  // +1 = zoom in, -1 = zoom out
             
-            // Smooth steering state - heavily smoothed for seamless motion
-            let steerX = 0, steerY = 0;  // Current steering offset (smoothed)
-            let targetSteerX = 0, targetSteerY = 0;  // Target steering direction
-            const steerSmoothing = 0.97;  // High value = very smooth transitions
-            const steerStrength = 0.015;  // How strongly to steer toward complexity
+            // MOMENTUM-BASED CAMERA SYSTEM
+            let centerX = 0;
+            let centerY = 0;
+            let centerVelX = 0;  // Velocity for momentum
+            let centerVelY = 0;
+            let targetCenterX = 0;
+            let targetCenterY = 0;
+            let centerInitialized = false;
+            
+            // SMOOTH TRANSITIONS
+            let smoothPauseFactor = 1.0;     // 1.0 = normal speed, 0.5 = paused
+            let smoothZoomRate = cfg.zoom.rate;  // Smoothed zoom rate
+            let isZoomPaused = false;
+            
+            // Camera momentum parameters
+            const cameraMomentum = 0.995;    // How much velocity is retained each frame (higher = more momentum)
+            const cameraAccel = 0.0003;      // How fast camera accelerates toward target
+            const maxCameraSpeed = 0.001;    // Maximum camera velocity per frame
+            
+            // STUCK DETECTION - escape when screen is solid color for too long
+            let stuckTimer = 0;              // How long we've been in solid color
+            const stuckThreshold = 3.0;      // Seconds before triggering escape (reduced from 5)
+            let isInsideFractal = false;     // true = stuck inside (dark), false = stuck outside (escaping fast)
+            let escapeVelX = 0;              // Corrective velocity to escape
+            let escapeVelY = 0;
+            const escapeAccel = 0.05;        // INCREASED 100x - how fast to accelerate when escaping
 
             function splitDouble(d) {
                 const hi = Math.fround(d);
@@ -958,20 +1016,47 @@ if __name__ == "__main__":
                 return [hi, lo];
             }
 
-            function render() {
-                const now = Date.now();
-                const time = (now - startTime) * 0.001;
+            let lastFrameTime = performance.now();
+            let smoothedDelta = 0.0166; // Initial guess for 60fps
+            let accumulatedTime = 0;
+            let accumulatedZoomLog = 0;
+
+            function render(now) {
+                // Calculate actual delta time
+                const dt = (now - lastFrameTime) * 0.001;
+                lastFrameTime = now;
+                
+                // Temporal smoothing of delta-time (90/10 blend)
+                // This prevents micro-stutters from browser scheduling issues
+                if (dt > 0 && dt < 0.1) { // Sanity check to avoid jumps after tab switch
+                    smoothedDelta = smoothedDelta * 0.9 + dt * 0.1;
+                }
+
+                // Increment time accumulator based on SMOOTHED delta
+                accumulatedTime += smoothedDelta;
+                // NOTE: Zoom accumulation is now handled by the adaptive zoom pause system below
 
                 const dpr = window.devicePixelRatio || 1;
-                if (canvas.width !== Math.floor(canvas.clientWidth * dpr)) {
-                    canvas.width = Math.floor(canvas.clientWidth * dpr);
-                    canvas.height = Math.floor(canvas.clientHeight * dpr);
+                const qualityScale = 0.75;  // Balance between quality and performance (0.5-1.0)
+                const MAX_W = 2560;
+                const MAX_H = 1440;
+                let targetW = Math.floor(canvas.clientWidth * dpr * qualityScale);
+                let targetH = Math.floor(canvas.clientHeight * dpr * qualityScale);
+                if (targetW > MAX_W) { targetH = Math.floor(targetH * (MAX_W / targetW)); targetW = MAX_W; }
+                if (targetH > MAX_H) { targetW = Math.floor(targetW * (MAX_H / targetH)); targetH = MAX_H; }
+                
+                if (canvas.width !== targetW || canvas.height !== targetH) {
+                    canvas.width = targetW;
+                    canvas.height = targetH;
                     gl.viewport(0, 0, canvas.width, canvas.height);
                 }
 
-                // Morphing Julia set - pure mathematical path, no CPU probing
-                const morphRate = cfg.animation.morphRate;
-                const phi = time * morphRate;
+                // Morphing Julia set - Use accumulatedTime for phi
+                // SLOW DOWN MORPH AS ZOOM DEEPENS - prevents chaos at deep zoom
+                // Use smooth pause factor for gradual transitions (not abrupt)
+                const zoomMorphSlowdown = 1.0 + accumulatedZoomLog / 5.0;  // At zoomLog=10, morph is 3x slower
+                const morphRate = cfg.animation.morphRate / zoomMorphSlowdown * smoothPauseFactor;
+                const phi = accumulatedTime * morphRate;
                 const spiralRadius = 0.35 - 0.08 * Math.sin(phi * 0.7);
                 const cx = spiralRadius * Math.cos(phi) - 0.1 * Math.cos(2.0 * phi + 0.3);
                 const cy = spiralRadius * Math.sin(phi) - 0.1 * Math.sin(2.0 * phi + 0.3);
@@ -981,31 +1066,216 @@ if __name__ == "__main__":
                 let sx = Math.sqrt((r_w + wx) * 0.5);
                 let sy = Math.sqrt((r_w - wx) * 0.5);
                 if (wy < 0.0) sy = -sy;
-                let fixX = (1.0 + sx) * 0.5;
-                let fixY = sy * 0.5;
+                
+                // Calculate attractive fixed point (for initialization/reset)
+                const fixX = (1.0 - sx) * 0.5;
+                const fixY = -sy * 0.5;
+                
+                // Calculate zoom
+                const zoom = Math.exp(accumulatedZoomLog);
+                
+                // CPU-SIDE ITERATION PROBE - test if a point escapes (JULIA SET)
+                // In Julia set: z₀ = probe point, c = morphing parameter (cx, cy)
+                function probeEscapes(px, py, maxIter) {
+                    let zx = px, zy = py;  // Start at probe point (Julia set)
+                    for (let i = 0; i < maxIter; i++) {
+                        const zx2 = zx * zx, zy2 = zy * zy;
+                        if (zx2 + zy2 > 4) return i;  // Escaped - return iteration count
+                        const newZx = zx2 - zy2 + cx;  // Use Julia set c parameter
+                        const newZy = 2 * zx * zy + cy;
+                        zx = newZx; zy = newZy;
+                    }
+                    return maxIter;  // Didn't escape - in set
+                }
+                
+                // CENTER ON JULIA SET BOUNDARY
+                // Find a point on the boundary by probing outward from origin
+                // in the direction of c (where structure is most interesting)
+                const cMag = Math.sqrt(cx * cx + cy * cy);
+                let dirX = cMag > 0.001 ? cx / cMag : 1.0;
+                let dirY = cMag > 0.001 ? cy / cMag : 0.0;
+                
+                // Binary search for boundary: find where iteration count changes
+                let lo = 0.0, hi = 2.0;  // Search range along the direction
+                const boundaryIter = 100;  // Quick boundary test iterations
+                
+                for (let bisect = 0; bisect < 12; bisect++) {
+                    const mid = (lo + hi) * 0.5;
+                    const px = mid * dirX;
+                    const py = mid * dirY;
+                    const iter = probeEscapes(px, py, boundaryIter);
+                    if (iter < boundaryIter) {
+                        hi = mid;  // Escaped - move inward
+                    } else {
+                        lo = mid;  // Didn't escape - move outward
+                    }
+                }
+                
+                // Target center is slightly inside the boundary
+                const boundaryDist = (lo + hi) * 0.5;
+                targetCenterX = boundaryDist * dirX * 0.95;
+                targetCenterY = boundaryDist * dirY * 0.95;
+                
+                // ===== BOUNDARY QUALITY DETECTION =====
+                // Probe multiple points around the center to detect if there's actual fractal detail
+                // If all points have similar escape times, we're in deadspace -> pause zoom
+                const probeScale = 0.5 / zoom;  // Scale probes to current view
+                const probePoints = [
+                    [targetCenterX + probeScale, targetCenterY],
+                    [targetCenterX - probeScale, targetCenterY],
+                    [targetCenterX, targetCenterY + probeScale],
+                    [targetCenterX, targetCenterY - probeScale],
+                    [targetCenterX + probeScale * 0.7, targetCenterY + probeScale * 0.7],
+                    [targetCenterX - probeScale * 0.7, targetCenterY - probeScale * 0.7],
+                ];
+                
+                // Get iteration counts for each probe
+                const probeIters = probePoints.map(p => probeEscapes(p[0], p[1], boundaryIter));
+                
+                // Calculate variance in iteration counts - high variance = good boundary detail
+                const meanIter = probeIters.reduce((a, b) => a + b, 0) / probeIters.length;
+                const variance = probeIters.reduce((sum, i) => sum + (i - meanIter) ** 2, 0) / probeIters.length;
+                const stdDev = Math.sqrt(variance);
+                
+                // ADAPTIVE ZOOM PAUSE: If variance is too low, pause zoom until edges reappear
+                const minVarianceThreshold = 10;  // Minimum std deviation needed to continue zoom
+                const hasGoodBoundary = stdDev > minVarianceThreshold;
+                isZoomPaused = !hasGoodBoundary;
+                
+                // DEBUG: Log every 60 frames (~1 sec) to trace stuck detection
+                if (Math.floor(accumulatedTime * 60) % 60 === 0) {
+                    console.log(`Boundary check: stdDev=${stdDev.toFixed(2)}, hasGood=${hasGoodBoundary}, stuckTimer=${stuckTimer.toFixed(1)}s, meanIter=${meanIter.toFixed(0)}`);
+                }
+                
+                // ===== STUCK DETECTION & ESCAPE =====
+                // If screen is solid color for stuckThreshold seconds, apply corrective velocity
+                if (!hasGoodBoundary) {
+                    stuckTimer += smoothedDelta;
+                    
+                    // Determine if we're stuck inside fractal (high iter = didn't escape = inside)
+                    // or outside fractal (low iter = escaped quickly = outside)
+                    isInsideFractal = meanIter > boundaryIter * 0.8;  // Most points didn't escape
+                    
+                    if (stuckTimer > stuckThreshold) {
+                        // Create escape velocity based on position relative to origin
+                        const distFromOrigin = Math.sqrt(centerX * centerX + centerY * centerY);
+                        // DON'T scale by zoom - we want strong escape regardless of zoom level
+                        
+                        if (distFromOrigin > 0.001) {
+                            // Normalize direction from origin
+                            const normX = centerX / distFromOrigin;
+                            const normY = centerY / distFromOrigin;
+                            
+                            if (isInsideFractal) {
+                                // Stuck INSIDE - move AWAY from origin (outward toward boundary)
+                                escapeVelX += normX * escapeAccel;
+                                escapeVelY += normY * escapeAccel;
+                                console.log(`STUCK INSIDE for ${stuckTimer.toFixed(1)}s - escaping OUTWARD`);
+                            } else {
+                                // Stuck OUTSIDE - move TOWARD origin (inward toward boundary)
+                                escapeVelX -= normX * escapeAccel;
+                                escapeVelY -= normY * escapeAccel;
+                                console.log(`STUCK OUTSIDE for ${stuckTimer.toFixed(1)}s - escaping INWARD`);
+                            }
+                        } else {
+                            // At origin - move in direction of c parameter
+                            escapeVelX += (cx > 0 ? 1 : -1) * escapeAccel;
+                            escapeVelY += (cy > 0 ? 1 : -1) * escapeAccel;
+                            console.log(`STUCK at ORIGIN for ${stuckTimer.toFixed(1)}s - escaping toward c`);
+                        }
+                    }
+                } else {
+                    // Complexity returned - reset stuck timer and decay escape velocity
+                    stuckTimer = 0;
+                    escapeVelX *= 0.9;  // Decay escape velocity
+                    escapeVelY *= 0.9;
+                }
+                
+                // SMOOTH PAUSE FACTOR - gradually transition between paused/unpaused
+                const targetPauseFactor = isZoomPaused ? 0.5 : 1.0;
+                smoothPauseFactor = smoothPauseFactor * 0.98 + targetPauseFactor * 0.02;  // Smooth 50-frame transition
+                
+                // SMOOTH ZOOM RATE - interpolate toward target rate
+                const targetZoomRate = hasGoodBoundary ? cfg.zoom.rate : 0;
+                smoothZoomRate = smoothZoomRate * 0.95 + targetZoomRate * 0.05;  // 20-frame transition
+                
+                // Dynamic zoom speed limit based on current zoom level
+                // Deeper zooms should have slower max zoom rate to maintain precision
+                const dynamicMaxRate = cfg.zoom.rate / (1 + accumulatedZoomLog * 0.1);
+                let clampedZoomRate = Math.min(smoothZoomRate, dynamicMaxRate);
+                
+                // FORCE COMPLETE STOP when stuck - don't zoom at all until complexity returns
+                if (stuckTimer > stuckThreshold) {
+                    clampedZoomRate = 0;  // Hard stop
+                }
+                
+                // Accumulate zoom with smooth rate
+                accumulatedZoomLog += clampedZoomRate * smoothedDelta * zoomDirection;
+                
+                // Re-check zoom bounds after accumulation
+                if (accumulatedZoomLog >= cfg.zoom.maxLog) {
+                    accumulatedZoomLog = cfg.zoom.maxLog;
+                    zoomDirection = -1;
+                } else if (accumulatedZoomLog <= cfg.zoom.minLog) {
+                    accumulatedZoomLog = cfg.zoom.minLog;
+                    zoomDirection = 1;
+                }
+                
+                // ===== MOMENTUM-BASED CAMERA =====
+                // Physics: accelerate toward target, retain momentum
+                // This gives ultra-smooth movement that doesn't lose precision at deep zoom
+                if (!centerInitialized) {
+                    centerX = targetCenterX;
+                    centerY = targetCenterY;
+                    centerVelX = 0;
+                    centerVelY = 0;
+                    centerInitialized = true;
+                } else {
+                    // Calculate acceleration toward target
+                    const dx = targetCenterX - centerX;
+                    const dy = targetCenterY - centerY;
+                    
+                    // Scale acceleration by zoom (smaller movements at deep zoom)
+                    const zoomScale = 1.0 / zoom;
+                    const accelX = dx * cameraAccel;
+                    const accelY = dy * cameraAccel;
+                    
+                    // Apply momentum (retain previous velocity) and acceleration
+                    centerVelX = centerVelX * cameraMomentum + accelX + escapeVelX;
+                    centerVelY = centerVelY * cameraMomentum + accelY + escapeVelY;
+                    
+                    // Clamp velocity to prevent overshooting (scale by zoom)
+                    const maxSpeed = maxCameraSpeed * zoomScale;
+                    const speed = Math.sqrt(centerVelX * centerVelX + centerVelY * centerVelY);
+                    if (speed > maxSpeed) {
+                        centerVelX *= maxSpeed / speed;
+                        centerVelY *= maxSpeed / speed;
+                    }
+                    
+                    // Apply velocity to position
+                    centerX += centerVelX;
+                    centerY += centerVelY;
+                }
 
-                // Constant zoom rate - no CPU probing needed
-                currentZoomLog += cfg.zoom.rate * 0.016;
-                const zoom = Math.exp(currentZoomLog);
-
-                // Dynamic max iterations for GPU - auto-scale to prevent pixelation
-                // Formula: Base + Multiplier * ZoomLog
-                let gpuMaxIter = cfg.iteration.baseCount + cfg.iteration.logMultiplier * currentZoomLog;
-                // Cap at shader hard limit (4000)
+                // Dynamic max iterations - sync with zoom log
+                let gpuMaxIter = cfg.iteration.baseCount + cfg.iteration.logMultiplier * accumulatedZoomLog;
                 if (gpuMaxIter > 4000) gpuMaxIter = 4000;
 
                 gl.uniform2f(locRes, canvas.width, canvas.height);
-                gl.uniform1f(locTime, time);
-                gl.uniform2fv(locFXH, splitDouble(fixX));
-                gl.uniform2fv(locFYH, splitDouble(fixY));
+                gl.uniform1f(locTime, accumulatedTime);
+                gl.uniform2fv(locFXH, splitDouble(centerX));
+                gl.uniform2fv(locFYH, splitDouble(centerY));
                 gl.uniform2fv(locZoom, splitDouble(zoom));
-                gl.uniform2fv(locInvZoom, splitDouble(1.0 / zoom));  // Compute 1/zoom in JS (float64) for precision
+                gl.uniform2fv(locInvZoom, splitDouble(1.0 / zoom));
                 gl.uniform1f(locMaxIter, gpuMaxIter);
 
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
                 requestAnimationFrame(render);
             }
-            requestAnimationFrame(render);
+            requestAnimationFrame((t) => {
+                lastFrameTime = t;
+                requestAnimationFrame(render);
+            });
             console.log("FRACTAL RUNNING");
         }
 
@@ -1017,7 +1287,8 @@ if __name__ == "__main__":
     })();
     """
     import os
-    music_dir = os.path.join(os.path.dirname(__file__), "Music")
-    config_path = os.path.join(os.path.dirname(__file__), "fractal_config.json")
-    demo.launch(share=False, server_name="127.0.0.1", server_port=7860, theme=theme, css=css, js=js, allowed_paths=[music_dir, config_path])
+    music_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "Music"))
+    config_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "fractal_config.json"))
+    app_dir = os.path.normpath(os.path.dirname(__file__))
+    demo.launch(share=False, server_name="127.0.0.1", server_port=7860, theme=theme, css=css, js=js, allowed_paths=[music_dir, config_path, app_dir])
 

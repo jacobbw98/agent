@@ -86,6 +86,54 @@ A Python-based agentic AI assistant running locally with Ollama + Nemotron-nano,
 
 > **Note:** Each time you open a new terminal, activate the venv with: `source venv/bin/activate`
 
+### macOS
+
+1. **Install Homebrew** (if not already installed):
+
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+
+2. **Install Python and dependencies:**
+
+   ```bash
+   brew install python3
+   ```
+
+3. **Create and activate a virtual environment:**
+
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+4. **Install Python dependencies:**
+
+   ```bash
+   pip install -r requirements.txt
+   playwright install chromium
+   ```
+
+5. **Grant accessibility permissions:**
+   - Go to System Preferences → Security & Privacy → Privacy → Accessibility
+   - Add Terminal (or your terminal app) to the list
+
+6. **Make sure Ollama is running:**
+
+   ```bash
+   ollama serve
+   ```
+
+7. **Run the Pro UI:**
+
+   ```bash
+   python ui_pro.py
+   ```
+
+8. Open <http://127.0.0.1:7860> in your browser.
+
+> **Note:** Each time you open a new terminal, activate the venv with: `source venv/bin/activate`
+
 ## UI Controls
 
 ### Hidden Buttons (hover to reveal)
@@ -134,14 +182,15 @@ Just type natural language commands like:
 
 ## Platform Support
 
-| Feature | Windows | Linux |
-|---------|---------|-------|
-| Fractal Visualizer | ✅ | ✅ |
-| Music Sync | ✅ | ✅ |
-| AI Agent | ✅ | ✅ |
-| Browser Automation | ✅ | ✅ |
-| Window Control | ✅ | ✅ (wmctrl/xdotool) |
-| Game Input | ✅ | ✅ (pyautogui) |
+| Feature            | Windows | Linux               | macOS               |
+|--------------------|---------|---------------------|---------------------|
+| Fractal Visualizer | ✅      | ✅                  | ✅                  |
+| Music Sync         | ✅      | ✅                  | ✅                  |
+| AI Agent           | ✅      | ✅                  | ✅                  |
+| Browser Automation | ✅      | ✅                  | ✅                  |
+| Window Control     | ✅      | ✅ (wmctrl/xdotool) | ✅ (AppleScript)    |
+| Game Input         | ✅      | ✅ (pyautogui)      | ✅ (pyautogui)      |
+
 
 ## Support
 

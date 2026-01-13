@@ -1,14 +1,16 @@
 """
 Game Control Tool - Keyboard/mouse input and window control for games.
-Cross-platform support for Windows and Linux.
+Cross-platform support for Windows, Linux, and macOS.
 """
 import time
 import sys
+import subprocess
 from typing import Optional, Tuple
 
 # Platform-specific imports
 IS_WINDOWS = sys.platform == 'win32'
 IS_LINUX = sys.platform.startswith('linux')
+IS_MACOS = sys.platform == 'darwin'
 
 # Try to import pyautogui (may fail on Wayland or missing X11 auth)
 try:
@@ -26,12 +28,14 @@ if IS_WINDOWS:
     import win32con
 elif IS_LINUX:
     try:
-        import subprocess
         HAS_WMCTRL = subprocess.run(['which', 'wmctrl'], capture_output=True).returncode == 0
         HAS_XDOTOOL = subprocess.run(['which', 'xdotool'], capture_output=True).returncode == 0
     except:
         HAS_WMCTRL = False
         HAS_XDOTOOL = False
+elif IS_MACOS:
+    # macOS uses AppleScript for window control
+    pass
 
 
 class GameControlTool:
@@ -47,6 +51,8 @@ class GameControlTool:
             return self._list_windows_win32()
         elif IS_LINUX:
             return self._list_windows_linux()
+        elif IS_MACOS:
+            return self._list_windows_macos()
         return "Window listing not supported on this platform"
     
     def _list_windows_win32(self) -> str:
@@ -79,12 +85,37 @@ class GameControlTool:
         except Exception as e:
             return f"Error listing windows: {e}"
     
+    def _list_windows_macos(self) -> str:
+        """macOS implementation using AppleScript."""
+        try:
+            script = '''
+            tell application "System Events"
+                set windowList to ""
+                repeat with proc in (every process whose background only is false)
+                    set procName to name of proc
+                    repeat with win in (every window of proc)
+                        set winName to name of win
+                        set windowList to windowList & "  [" & procName & "] " & winName & linefeed
+                    end repeat
+                end repeat
+                return windowList
+            end tell
+            '''
+            result = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
+            if result.returncode == 0:
+                return "Visible windows:\n" + result.stdout.strip()
+            return f"Error: {result.stderr}"
+        except Exception as e:
+            return f"Error listing windows: {e}"
+    
     def focus_window(self, window_title: str) -> str:
         """Focus a window by title (partial match)."""
         if IS_WINDOWS:
             return self._focus_window_win32(window_title)
         elif IS_LINUX:
             return self._focus_window_linux(window_title)
+        elif IS_MACOS:
+            return self._focus_window_macos(window_title)
         return "Window focus not supported on this platform"
     
     def _focus_window_win32(self, window_title: str) -> str:
@@ -140,6 +171,39 @@ class GameControlTool:
             except Exception as e:
                 return f"Error focusing window: {e}"
         return "Install wmctrl or xdotool: sudo apt install wmctrl xdotool"
+    
+    def _focus_window_macos(self, window_title: str) -> str:
+        """macOS implementation using AppleScript."""
+        try:
+            script = f'''
+            tell application "System Events"
+                set found to false
+                repeat with proc in (every process whose background only is false)
+                    if name of proc contains "{window_title}" then
+                        set frontmost of proc to true
+                        set found to true
+                        exit repeat
+                    end if
+                    repeat with win in (every window of proc)
+                        if name of win contains "{window_title}" then
+                            set frontmost of proc to true
+                            set found to true
+                            exit repeat
+                        end if
+                    end repeat
+                    if found then exit repeat
+                end repeat
+                return found
+            end tell
+            '''
+            result = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
+            if result.returncode == 0 and 'true' in result.stdout.lower():
+                self._window_title = window_title
+                time.sleep(0.1)
+                return f"Focused window: {window_title}"
+            return f"Window containing '{window_title}' not found"
+        except Exception as e:
+            return f"Error focusing window: {e}"
     
     def get_window_rect(self) -> Optional[Tuple[int, int, int, int]]:
         """Get the rectangle of the active window."""

@@ -1396,13 +1396,16 @@ if __name__ == "__main__":
                 if (refreshBtn) {
                     refreshBtn.addEventListener('click', () => {
                         console.log('Refreshing effects...');
-                        // Clear ripples
-                        ripples = [];
-                        avgBeatDelta = 0.01;
-                        lastBeatEnergy = 0;
-                        globalAudioTime = 0;
+                        // Clear ripples using window scope
+                        window.ripples = [];
+                        window.avgBeatDelta = 0.01;
+                        window.lastBeatEnergy = 0;
+                        window.globalAudioTime = 0;
                         // Reload config
                         fetch('/file=fractal_config.json').then(r => r.json()).then(c => { cfg = {...cfg, ...c}; console.log('Config reloaded:', cfg); updateConfigDisplay(); }).catch(() => {});
+                        // Visual feedback
+                        refreshBtn.textContent = '✓ Refreshed!';
+                        setTimeout(() => { refreshBtn.textContent = '🔄 Refresh Effects'; }, 1500);
                     });
                 }
                 
@@ -1496,13 +1499,18 @@ if __name__ == "__main__":
             let accumulatedTime = 0;
             let accumulatedZoomLog = 0;
 
-            // Ripple State - MULTI-RIPPLE SYSTEM
+            // Ripple State - MULTI-RIPPLE SYSTEM (on window for settings access)
             // Each beat spawns a new ripple wave with its own birth time
             const MAX_RIPPLES = 6;  // Number of concurrent ripple waves
-            let ripples = [];  // Array of {birthTime, intensity, type} objects
-            let lastBeatEnergy = 0;
-            let avgBeatDelta = 0.01; // Adaptive threshold baseline
-            let globalAudioTime = 0;  // Cumulative audio-synced time
+            window.ripples = [];  // Array of {birthTime, intensity, type} objects
+            window.lastBeatEnergy = 0;
+            window.avgBeatDelta = 0.01; // Adaptive threshold baseline
+            window.globalAudioTime = 0;  // Cumulative audio-synced time
+            // Local aliases for convenience
+            let ripples = window.ripples;
+            let lastBeatEnergy = window.lastBeatEnergy;
+            let avgBeatDelta = window.avgBeatDelta;
+            let globalAudioTime = window.globalAudioTime;
             
             // Sync Cleanup State
             let activeSyncInterval = null;

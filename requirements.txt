@@ -1,8 +1,13 @@
 # Agentic Program Dependencies
+# Core
 ollama>=0.4.0
 gradio>=4.0.0
 playwright>=1.40.0
 python-docx>=1.1.0
-pyautogui>=0.9.54
-pywin32>=306
 Pillow>=10.0.0
+
+# Cross-platform input control
+pyautogui>=0.9.54
+
+# Windows-only (auto-skipped on Linux)
+pywin32>=306; sys_platform == 'win32'

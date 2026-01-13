@@ -1391,22 +1391,18 @@ if __name__ == "__main__":
                     });
                 }
                 
-                // Refresh effects button
+                // Refresh effects button - uses global function
                 const refreshBtn = document.getElementById('refresh-effects-btn');
                 if (refreshBtn) {
                     refreshBtn.addEventListener('click', () => {
-                        console.log('Refreshing effects...');
-                        // Clear ripples using window scope
-                        window.ripples = [];
-                        window.avgBeatDelta = 0.01;
-                        window.lastBeatEnergy = 0;
-                        window.globalAudioTime = 0;
-                        // Reload config
-                        fetch('/file=fractal_config.json').then(r => r.json()).then(c => { cfg = {...cfg, ...c}; console.log('Config reloaded:', cfg); updateConfigDisplay(); }).catch(() => {});
+                        window.refreshFractalEffects();
                         // Visual feedback
                         refreshBtn.textContent = '✓ Refreshed!';
                         setTimeout(() => { refreshBtn.textContent = '🔄 Refresh Effects'; }, 1500);
                     });
+                    console.log('Refresh button handler attached');
+                } else {
+                    console.warn('Refresh button not found in DOM');
                 }
                 
                 // Apply LLM Settings button - syncs to hidden Gradio components
@@ -1452,8 +1448,62 @@ if __name__ == "__main__":
                 updateConfigDisplay();
             }
             
-            // Delayed setup to ensure DOM is ready
-            setTimeout(setupSettingsHandlers, 1000);
+            // ===== GLOBAL REFRESH FUNCTION =====
+            // Can be called from button or automatically
+            window.refreshFractalEffects = function() {
+                console.log('=== REFRESH FRACTAL EFFECTS ===');
+                
+                // Reset all ripple state
+                window.ripples = [];
+                window.avgBeatDelta = 0.01;
+                window.lastBeatEnergy = 0;
+                window.globalAudioTime = 0;
+                console.log('Ripple state reset');
+                
+                // Force audio re-initialization by resetting isAudioActive
+                // This triggers the polling loop to re-establish the connection
+                isAudioActive = false;
+                console.log('Audio connection will be re-established on next poll');
+                
+                // Resume audio context if suspended
+                if (window.audioCtx && window.audioCtx.state === 'suspended') {
+                    window.audioCtx.resume();
+                    console.log('Audio context resumed');
+                }
+                
+                // Reload config
+                fetch('/file=fractal_config.json')
+                    .then(r => r.json())
+                    .then(c => { 
+                        cfg = {...cfg, ...c}; 
+                        console.log('Config reloaded:', cfg); 
+                        updateConfigDisplay(); 
+                    })
+                    .catch(() => console.log('Config reload skipped'));
+            };
+            
+            // ===== AUTOMATIC 4-MINUTE RESET =====
+            // Prevents floating-point precision issues during long songs
+            const RESET_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
+            setInterval(() => {
+                console.log('Auto-reset triggered (4 min interval)');
+                window.refreshFractalEffects();
+            }, RESET_INTERVAL_MS);
+            
+            // Delayed setup to ensure DOM is ready - retry multiple times
+            function attemptSetup(retries) {
+                const refreshBtn = document.getElementById('refresh-effects-btn');
+                if (refreshBtn) {
+                    console.log('Settings handlers setup successful');
+                    setupSettingsHandlers();
+                } else if (retries > 0) {
+                    console.log('Waiting for settings panel DOM...', retries);
+                    setTimeout(() => attemptSetup(retries - 1), 500);
+                } else {
+                    console.warn('Settings panel not found after retries');
+                }
+            }
+            setTimeout(() => attemptSetup(10), 1000);
 
             const startTime = Date.now();
             let currentZoomLog = 0;  // Start zoomed out
@@ -1715,12 +1765,17 @@ if __name__ == "__main__":
                      const onPause = stopBuffer;
                      const onPlay = () => {
                         playBuffer(element.currentTime);
-                        // Reset stats here too just in case
-                        avgBeatDelta = 0.01;
+                        // Reset stats using window scope
+                        window.avgBeatDelta = 0.01;
+                        window.lastBeatEnergy = 0;
+                        window.globalAudioTime = 0;
+                        window.ripples = [];
                      };
                      const onLoaded = () => {
-                        avgBeatDelta = 0.01;
-                        lastBeatEnergy = 0;
+                        window.avgBeatDelta = 0.01;
+                        window.lastBeatEnergy = 0;
+                        window.globalAudioTime = 0;
+                        window.ripples = [];
                         console.log("New Track Loaded - Ripple Stats Reset");
                      };
 
@@ -1779,6 +1834,12 @@ if __name__ == "__main__":
                     midEnergy = midRange.reduce((a, b) => a + b, 0) / midRange.length / 255.0;
                     highEnergy = highRange.reduce((a, b) => a + b, 0) / highRange.length / 255.0;
                     
+                    // Sync local variables with window scope (in case refresh was clicked)
+                    ripples = window.ripples;
+                    lastBeatEnergy = window.lastBeatEnergy;
+                    avgBeatDelta = window.avgBeatDelta;
+                    globalAudioTime = window.globalAudioTime;
+                    
                     // TRANSIENT DETECTION (Ripple)
                     const beatEnergy = Math.max(bassEnergy, midEnergy);
                     const beatDelta = beatEnergy - lastBeatEnergy;
@@ -1806,28 +1867,36 @@ if __name__ == "__main__":
                          const intensity = rippleType === 'bass' ? 0.12 : 0.06;
                          
                          // Add new ripple to pool
-                         ripples.push({
+                         window.ripples.push({
                              birthTime: globalAudioTime,
                              intensity: intensity,
                              type: rippleType
                          });
                          
                          // Keep pool size limited - remove oldest when full
-                         while (ripples.length > MAX_RIPPLES) {
-                             ripples.shift();
+                         while (window.ripples.length > MAX_RIPPLES) {
+                             window.ripples.shift();
                          }
                     }
                     lastBeatEnergy = beatEnergy;
+                    window.lastBeatEnergy = lastBeatEnergy;
                     
                     // Advance global audio time
                     globalAudioTime += smoothedDelta;
+                    window.globalAudioTime = globalAudioTime;
                     
                     // NaN SAFETY GUARD
-                    if (isNaN(globalAudioTime)) globalAudioTime = 0;
-                    if (isNaN(avgBeatDelta)) avgBeatDelta = 0.01;
+                    if (isNaN(globalAudioTime)) {
+                        globalAudioTime = 0;
+                        window.globalAudioTime = 0;
+                    }
+                    if (isNaN(avgBeatDelta)) {
+                        avgBeatDelta = 0.01;
+                        window.avgBeatDelta = 0.01;
+                    }
                     
                     // Update ripple intensities with decay and remove dead ripples
-                    ripples = ripples.filter(r => {
+                    window.ripples = window.ripples.filter(r => {
                         r.intensity *= 0.96;  // Slightly slower decay for sustained waves
                         return r.intensity > 0.005;  // Remove when too faint
                     });
@@ -2146,7 +2215,7 @@ if __name__ == "__main__":
                 
                 // Populate ripple uniforms with top 4 ripples (sorted by intensity)
                 const rippleMultiplier = window.fractalSettings?.rippleIntensity ?? 1.0;
-                const sortedRipples = [...ripples].sort((a, b) => b.intensity - a.intensity).slice(0, 4);
+                const sortedRipples = [...window.ripples].sort((a, b) => b.intensity - a.intensity).slice(0, 4);
                 for (let i = 0; i < 4; i++) {
                     if (i < sortedRipples.length) {
                         const r = sortedRipples[i];

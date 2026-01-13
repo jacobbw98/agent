@@ -1,11 +1,27 @@
 """
 Game Control Tool - Keyboard/mouse input and window control for games.
+Cross-platform support for Windows and Linux.
 """
 import time
+import sys
 from typing import Optional, Tuple
 import pyautogui
-import win32gui
-import win32con
+
+# Platform-specific imports
+IS_WINDOWS = sys.platform == 'win32'
+IS_LINUX = sys.platform.startswith('linux')
+
+if IS_WINDOWS:
+    import win32gui
+    import win32con
+elif IS_LINUX:
+    try:
+        import subprocess
+        HAS_WMCTRL = subprocess.run(['which', 'wmctrl'], capture_output=True).returncode == 0
+        HAS_XDOTOOL = subprocess.run(['which', 'xdotool'], capture_output=True).returncode == 0
+    except:
+        HAS_WMCTRL = False
+        HAS_XDOTOOL = False
 
 
 # Configure pyautogui for game control
@@ -22,6 +38,14 @@ class GameControlTool:
     
     def list_windows(self) -> str:
         """List all visible windows."""
+        if IS_WINDOWS:
+            return self._list_windows_win32()
+        elif IS_LINUX:
+            return self._list_windows_linux()
+        return "Window listing not supported on this platform"
+    
+    def _list_windows_win32(self) -> str:
+        """Windows implementation."""
         windows = []
         
         def enum_callback(hwnd, results):
@@ -34,8 +58,32 @@ class GameControlTool:
         win32gui.EnumWindows(enum_callback, windows)
         return "Visible windows:\n" + "\n".join(windows[:30])
     
+    def _list_windows_linux(self) -> str:
+        """Linux implementation using wmctrl."""
+        if not HAS_WMCTRL:
+            return "wmctrl not installed. Run: sudo apt install wmctrl"
+        try:
+            result = subprocess.run(['wmctrl', '-l'], capture_output=True, text=True)
+            lines = result.stdout.strip().split('\n')
+            formatted = []
+            for line in lines[:30]:
+                parts = line.split(None, 3)
+                if len(parts) >= 4:
+                    formatted.append(f"  [{parts[0]}] {parts[3]}")
+            return "Visible windows:\n" + "\n".join(formatted)
+        except Exception as e:
+            return f"Error listing windows: {e}"
+    
     def focus_window(self, window_title: str) -> str:
         """Focus a window by title (partial match)."""
+        if IS_WINDOWS:
+            return self._focus_window_win32(window_title)
+        elif IS_LINUX:
+            return self._focus_window_linux(window_title)
+        return "Window focus not supported on this platform"
+    
+    def _focus_window_win32(self, window_title: str) -> str:
+        """Windows implementation."""
         target_hwnd = None
         search_lower = window_title.lower()
         
@@ -62,11 +110,53 @@ class GameControlTool:
         
         return f"Window containing '{window_title}' not found. Use list_windows to see available windows."
     
+    def _focus_window_linux(self, window_title: str) -> str:
+        """Linux implementation using wmctrl or xdotool."""
+        if HAS_WMCTRL:
+            try:
+                result = subprocess.run(['wmctrl', '-a', window_title], capture_output=True, text=True)
+                if result.returncode == 0:
+                    self._window_title = window_title
+                    time.sleep(0.1)
+                    return f"Focused window: {window_title}"
+                return f"Window containing '{window_title}' not found"
+            except Exception as e:
+                return f"Error focusing window: {e}"
+        elif HAS_XDOTOOL:
+            try:
+                result = subprocess.run(['xdotool', 'search', '--name', window_title], capture_output=True, text=True)
+                windows = result.stdout.strip().split('\n')
+                if windows and windows[0]:
+                    subprocess.run(['xdotool', 'windowactivate', windows[0]])
+                    self._window_title = window_title
+                    time.sleep(0.1)
+                    return f"Focused window: {window_title}"
+                return f"Window containing '{window_title}' not found"
+            except Exception as e:
+                return f"Error focusing window: {e}"
+        return "Install wmctrl or xdotool: sudo apt install wmctrl xdotool"
+    
     def get_window_rect(self) -> Optional[Tuple[int, int, int, int]]:
         """Get the rectangle of the active window."""
-        if self._active_window:
+        if IS_WINDOWS and self._active_window:
             try:
                 return win32gui.GetWindowRect(self._active_window)
+            except:
+                pass
+        elif IS_LINUX and HAS_XDOTOOL:
+            try:
+                result = subprocess.run(
+                    ['xdotool', 'getactivewindow', 'getwindowgeometry', '--shell'],
+                    capture_output=True, text=True
+                )
+                lines = result.stdout.strip().split('\n')
+                geom = {}
+                for line in lines:
+                    if '=' in line:
+                        k, v = line.split('=')
+                        geom[k] = int(v)
+                if 'X' in geom and 'Y' in geom and 'WIDTH' in geom and 'HEIGHT' in geom:
+                    return (geom['X'], geom['Y'], geom['X'] + geom['WIDTH'], geom['Y'] + geom['HEIGHT'])
             except:
                 pass
         return None

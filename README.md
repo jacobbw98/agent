@@ -53,29 +53,38 @@ A Python-based agentic AI assistant running locally with Ollama + Nemotron-nano,
    sudo apt install wmctrl xdotool
    
    # For pyautogui (screenshot/input)
-   sudo apt install python3-tk python3-dev scrot
+   sudo apt install python3-tk python3-dev scrot python3-venv python3-full
    ```
 
-2. **Install Python dependencies:**
+2. **Create and activate a virtual environment:**
+
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+3. **Install Python dependencies:**
 
    ```bash
    pip install -r requirements.txt
    playwright install chromium
    ```
 
-3. **Make sure Ollama is running:**
+4. **Make sure Ollama is running:**
 
    ```bash
    ollama serve
    ```
 
-4. **Run the Pro UI:**
+5. **Run the Pro UI:**
 
    ```bash
    python ui_pro.py
    ```
 
-5. Open <http://127.0.0.1:7860> in your browser.
+6. Open <http://127.0.0.1:7860> in your browser.
+
+> **Note:** Each time you open a new terminal, activate the venv with: `source venv/bin/activate`
 
 ## UI Controls
 

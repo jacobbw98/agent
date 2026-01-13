@@ -307,6 +307,131 @@ def create_pro_ui():
     #toggle-ui-btn:hover {
         opacity: 1 !important; /* Visible on hover */
     }
+    
+    /* Donate Button - Inline, visible with main UI */
+    #donate-btn-inline:hover {
+        background: rgba(80, 30, 80, 0.8) !important;
+        box-shadow: 0 0 15px rgba(255, 105, 180, 0.4) !important;
+        transform: scale(1.02);
+    }
+    
+    /* Settings Button - Top Left, same hover-to-reveal behavior */
+    #settings-btn {
+        position: fixed !important;
+        top: 20px !important;
+        left: 20px !important;
+        z-index: 99999 !important;
+        width: 40px !important;
+        min-width: 40px !important;
+        height: 40px !important;
+        padding: 0 !important;
+        background: rgba(0, 50, 0, 0.6) !important;
+        border: 1px solid #00ff00 !important;
+        color: #00ff00 !important;
+        backdrop-filter: blur(4px);
+        opacity: 0 !important;
+        transition: opacity 0.3s ease-in-out !important;
+        font-size: 18px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    #settings-btn:hover {
+        opacity: 1 !important;
+    }
+    
+    /* Settings Panel - Collapsible with glassmorphism */
+    #settings-panel {
+        position: fixed !important;
+        top: 70px !important;
+        left: 20px !important;
+        width: 320px !important;
+        max-height: 80vh !important;
+        overflow-y: auto !important;
+        z-index: 99998 !important;
+        background: rgba(10, 25, 50, 0.95) !important;
+        border: 1px solid #00ff00 !important;
+        border-radius: 12px !important;
+        padding: 15px !important;
+        backdrop-filter: blur(8px);
+        display: none;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8) !important;
+    }
+    #settings-panel.visible {
+        display: block !important;
+    }
+    /* Hide the Gradio wrapper around the settings panel HTML */
+    #settings-panel-wrapper {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        pointer-events: none;
+    }
+    #settings-panel-wrapper > * {
+        pointer-events: auto;
+    }
+    #settings-panel h3 {
+        margin-top: 0 !important;
+        margin-bottom: 10px !important;
+        border-bottom: 1px solid rgba(0, 255, 0, 0.3) !important;
+        padding-bottom: 8px !important;
+    }
+    #settings-panel .settings-section {
+        margin-bottom: 20px !important;
+    }
+    #settings-panel .settings-row {
+        margin-bottom: 12px !important;
+    }
+    #settings-panel label {
+        display: block !important;
+        margin-bottom: 4px !important;
+        font-size: 12px !important;
+    }
+    
+    /* Slider styling for settings */
+    #settings-panel input[type="range"] {
+        width: 100% !important;
+        height: 8px !important;
+        background: rgba(0, 80, 0, 0.4) !important;
+        border-radius: 4px !important;
+        outline: none !important;
+        -webkit-appearance: none !important;
+    }
+    #settings-panel input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none !important;
+        width: 16px !important;
+        height: 16px !important;
+        background: #00ff00 !important;
+        border-radius: 50% !important;
+        cursor: pointer !important;
+        box-shadow: 0 0 8px #00ff00 !important;
+    }
+    #settings-panel input[type="range"]::-moz-range-thumb {
+        width: 16px !important;
+        height: 16px !important;
+        background: #00ff00 !important;
+        border-radius: 50% !important;
+        cursor: pointer !important;
+        box-shadow: 0 0 8px #00ff00 !important;
+    }
+    #settings-panel .slider-value {
+        display: inline-block !important;
+        min-width: 40px !important;
+        text-align: right !important;
+        font-family: monospace !important;
+    }
+    #settings-panel .config-display {
+        background: rgba(0, 20, 0, 0.6) !important;
+        padding: 8px !important;
+        border-radius: 6px !important;
+        font-family: monospace !important;
+        font-size: 11px !important;
+    }
     """
     
     with gr.Blocks(title="Pro AI Agent") as demo:
@@ -316,6 +441,7 @@ def create_pro_ui():
         toggle_js = """
         () => {
             const ui = document.getElementById('ui-container');
+            const settingsPanel = document.getElementById('settings-panel');
             if (ui) {
                 if (ui.style.opacity === '0') {
                      ui.style.opacity = '1';
@@ -323,12 +449,94 @@ def create_pro_ui():
                 } else {
                      ui.style.opacity = '0';
                      ui.style.pointerEvents = 'none';
+                     // Also hide settings panel when hiding UI
+                     if (settingsPanel) settingsPanel.classList.remove('visible');
                 }
             }
         }
         """
         
         toggle_btn.click(None, None, None, js=toggle_js)
+        
+        # Settings Button - Top Left
+        settings_btn = gr.Button("⚙️", elem_id="settings-btn")
+        
+        # Settings Panel HTML - rendered via gr.HTML for custom layout
+        settings_panel_html = gr.HTML(elem_id="settings-panel-wrapper", value="""
+        <div id="settings-panel">
+            <h3>⚙️ Settings</h3>
+            
+            <div class="settings-section">
+                <h4 style="margin: 0 0 10px 0; font-size: 14px;">🌀 Fractal</h4>
+                
+                <div class="settings-row">
+                    <label><input type="checkbox" id="fractal-enabled" checked> Enable Fractal</label>
+                </div>
+                
+                <div class="settings-row">
+                    <label>Morph Intensity: <span id="morph-value" class="slider-value">1.0</span></label>
+                    <input type="range" id="morph-intensity" min="-10" max="10" step="0.5" value="1">
+                </div>
+                
+                <div class="settings-row">
+                    <label>Ripple Intensity: <span id="ripple-value" class="slider-value">1.0</span></label>
+                    <input type="range" id="ripple-intensity" min="-10" max="10" step="0.5" value="1">
+                </div>
+                
+                <div class="settings-row">
+                    <label>Bass Zoom Intensity: <span id="bass-value" class="slider-value">1.0</span></label>
+                    <input type="range" id="bass-intensity" min="-10" max="10" step="0.5" value="1">
+                </div>
+                
+                <div class="settings-row">
+                    <label>Config Values:</label>
+                    <div class="config-display" id="config-display">
+                        Zoom Rate: --<br>
+                        Max Iter: --<br>
+                        Morph Rate: --
+                    </div>
+                </div>
+                
+                <div class="settings-row">
+                    <button id="refresh-effects-btn" style="width: 100%; padding: 8px; background: rgba(0, 80, 0, 0.4); border: 1px solid #00ff00; color: #00ff00; cursor: pointer; border-radius: 6px;">🔄 Refresh Effects</button>
+                </div>
+            </div>
+            
+            <div class="settings-section">
+                <h4 style="margin: 0 0 10px 0; font-size: 14px;">🤖 LLM</h4>
+                
+                <div class="settings-row">
+                    <label>System Prompt:</label>
+                    <textarea id="system-prompt" style="width: 100%; height: 80px; background: rgba(0, 20, 0, 0.6); border: 1px solid #00ff00; color: #00ff00; font-family: monospace; font-size: 11px; resize: vertical; border-radius: 6px; padding: 6px;">You are an AI assistant that completes tasks by using tools.</textarea>
+                </div>
+                
+                <div class="settings-row">
+                    <label>Temperature: <span id="temp-value" class="slider-value">0.6</span></label>
+                    <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.6">
+                </div>
+                
+                <div class="settings-row">
+                    <label>Context Length: <span id="ctx-value" class="slider-value">2048</span></label>
+                    <input type="range" id="context-length" min="512" max="8192" step="256" value="2048">
+                </div>
+                
+                <div class="settings-row">
+                    <button id="apply-llm-settings-btn" style="width: 100%; padding: 8px; background: rgba(0, 100, 50, 0.5); border: 1px solid #00ff00; color: #00ff00; cursor: pointer; border-radius: 6px;">✓ Apply LLM Settings</button>
+                </div>
+            </div>
+        </div>
+        """)
+        
+        # Settings panel toggle JavaScript
+        settings_toggle_js = """
+        () => {
+            const panel = document.getElementById('settings-panel');
+            if (panel) {
+                panel.classList.toggle('visible');
+            }
+        }
+        """
+        settings_btn.click(None, None, None, js=settings_toggle_js)
         
         # Wrap EVERYTHING (Title + Main UI) in container for toggling
         with gr.Column(elem_id="ui-container") as main_wrapper:
@@ -406,6 +614,12 @@ def create_pro_ui():
                         interactive=False,
                         lines=1
                     )
+                    # Donate button - visible in main UI
+                    gr.HTML("""
+                    <a id="donate-btn-inline" href="https://venmo.com/code?user_id=2272974967144448513&created=1768270538" target="_blank" style="display: block; text-align: center; margin-top: 15px; padding: 10px 20px; background: rgba(50, 20, 50, 0.6); border: 1px solid #ff69b4; color: #ff69b4; text-decoration: none; border-radius: 8px; font-size: 14px; transition: all 0.3s ease;">
+                        よろしければ 💝 Donate
+                    </a>
+                    """)
         
         # Event handlers
         def on_send(message, history, model, planning):
@@ -443,6 +657,27 @@ def create_pro_ui():
         def on_audio_end():
             return on_next_track()
         
+        # LLM Settings handlers - update the client when settings change
+        def on_llm_settings_update(system_prompt_val, temperature_val, context_val):
+            """Update LLM settings from the settings panel."""
+            if system_prompt_val and system_prompt_val.strip():
+                ui.agent.client.system_prompt = system_prompt_val
+            if temperature_val is not None:
+                ui.agent.client.temperature = float(temperature_val)
+            if context_val is not None:
+                ui.agent.client.num_predict = int(context_val)
+            return f"Settings updated: temp={ui.agent.client.temperature}, ctx={ui.agent.client.num_predict}"
+        
+        # Hidden components for LLM settings bridge (updated via JavaScript)
+        with gr.Row(visible=False):
+            llm_system_prompt = gr.Textbox(elem_id="llm-system-prompt-hidden")
+            llm_temperature = gr.Number(elem_id="llm-temperature-hidden", value=0.6)
+            llm_context = gr.Number(elem_id="llm-context-hidden", value=2048)
+            llm_settings_status = gr.Textbox()
+        
+        # Apply button for LLM settings (separate from HTML panel)
+        apply_llm_btn = gr.Button("Apply LLM Settings", elem_id="apply-llm-btn", visible=False)
+        
         send_btn.click(
             on_send,
             inputs=[msg, chatbot, model_dropdown, planning_mode],
@@ -472,6 +707,12 @@ def create_pro_ui():
         audio_player.stop(
             on_next_track,
             outputs=[audio_player, now_playing]
+        )
+        # LLM settings apply button handler
+        apply_llm_btn.click(
+            on_llm_settings_update,
+            inputs=[llm_system_prompt, llm_temperature, llm_context],
+            outputs=[llm_settings_status]
         )
         # Autoplay first track on load
         demo.load(
@@ -1068,7 +1309,148 @@ if __name__ == "__main__":
             };
             
             // Load config from file (async, non-blocking)
-            fetch('/file=fractal_config.json').then(r => r.json()).then(c => { cfg = {...cfg, ...c}; console.log('Fractal config loaded:', cfg); }).catch(() => console.log('Using default fractal config'));
+            fetch('/file=fractal_config.json').then(r => r.json()).then(c => { cfg = {...cfg, ...c}; console.log('Fractal config loaded:', cfg); updateConfigDisplay(); }).catch(() => console.log('Using default fractal config'));
+
+            // ===== SETTINGS PANEL INTEGRATION =====
+            // Global settings controlled by the settings panel
+            window.fractalSettings = {
+                enabled: true,
+                morphIntensity: 1.0,
+                rippleIntensity: 1.0,
+                bassZoomIntensity: 1.0
+            };
+            
+            // Update config display in settings panel
+            function updateConfigDisplay() {
+                const display = document.getElementById('config-display');
+                if (display && cfg) {
+                    display.innerHTML = `Zoom Rate: ${cfg.zoom?.rate?.toFixed(3) || '--'}<br>Max Iter: ${cfg.iteration?.maxCount || '--'}<br>Morph Rate: ${cfg.animation?.morphRate?.toFixed(3) || '--'}`;
+                }
+            }
+            
+            // Setup settings panel event listeners
+            function setupSettingsHandlers() {
+                // Fractal enable/disable toggle
+                const fractalToggle = document.getElementById('fractal-enabled');
+                if (fractalToggle) {
+                    fractalToggle.addEventListener('change', (e) => {
+                        window.fractalSettings.enabled = e.target.checked;
+                        console.log('Fractal enabled:', window.fractalSettings.enabled);
+                    });
+                }
+                
+                // Morph intensity slider
+                const morphSlider = document.getElementById('morph-intensity');
+                const morphValue = document.getElementById('morph-value');
+                if (morphSlider) {
+                    morphSlider.addEventListener('input', (e) => {
+                        window.fractalSettings.morphIntensity = parseFloat(e.target.value);
+                        if (morphValue) morphValue.textContent = parseFloat(e.target.value).toFixed(1);
+                    });
+                }
+                
+                // Ripple intensity slider
+                const rippleSlider = document.getElementById('ripple-intensity');
+                const rippleValue = document.getElementById('ripple-value');
+                if (rippleSlider) {
+                    rippleSlider.addEventListener('input', (e) => {
+                        window.fractalSettings.rippleIntensity = parseFloat(e.target.value);
+                        if (rippleValue) rippleValue.textContent = parseFloat(e.target.value).toFixed(1);
+                    });
+                }
+                
+                // Bass zoom intensity slider
+                const bassSlider = document.getElementById('bass-intensity');
+                const bassValue = document.getElementById('bass-value');
+                if (bassSlider) {
+                    bassSlider.addEventListener('input', (e) => {
+                        window.fractalSettings.bassZoomIntensity = parseFloat(e.target.value);
+                        if (bassValue) bassValue.textContent = parseFloat(e.target.value).toFixed(1);
+                    });
+                }
+                
+                // Temperature slider (LLM)
+                const tempSlider = document.getElementById('temperature');
+                const tempValue = document.getElementById('temp-value');
+                if (tempSlider) {
+                    tempSlider.addEventListener('input', (e) => {
+                        window.llmSettings = window.llmSettings || {};
+                        window.llmSettings.temperature = parseFloat(e.target.value);
+                        if (tempValue) tempValue.textContent = parseFloat(e.target.value).toFixed(1);
+                    });
+                }
+                
+                // Context length slider (LLM)
+                const ctxSlider = document.getElementById('context-length');
+                const ctxValue = document.getElementById('ctx-value');
+                if (ctxSlider) {
+                    ctxSlider.addEventListener('input', (e) => {
+                        window.llmSettings = window.llmSettings || {};
+                        window.llmSettings.contextLength = parseInt(e.target.value);
+                        if (ctxValue) ctxValue.textContent = e.target.value;
+                    });
+                }
+                
+                // Refresh effects button
+                const refreshBtn = document.getElementById('refresh-effects-btn');
+                if (refreshBtn) {
+                    refreshBtn.addEventListener('click', () => {
+                        console.log('Refreshing effects...');
+                        // Clear ripples
+                        ripples = [];
+                        avgBeatDelta = 0.01;
+                        lastBeatEnergy = 0;
+                        globalAudioTime = 0;
+                        // Reload config
+                        fetch('/file=fractal_config.json').then(r => r.json()).then(c => { cfg = {...cfg, ...c}; console.log('Config reloaded:', cfg); updateConfigDisplay(); }).catch(() => {});
+                    });
+                }
+                
+                // Apply LLM Settings button - syncs to hidden Gradio components
+                const applyLLMBtn = document.getElementById('apply-llm-settings-btn');
+                if (applyLLMBtn) {
+                    applyLLMBtn.addEventListener('click', () => {
+                        console.log('Applying LLM settings...');
+                        const systemPrompt = document.getElementById('system-prompt')?.value || '';
+                        const temperature = parseFloat(document.getElementById('temperature')?.value || 0.6);
+                        const contextLength = parseInt(document.getElementById('context-length')?.value || 2048);
+                        
+                        // Store in window for Python to read via custom event
+                        window.llmSettings = { systemPrompt, temperature, contextLength };
+                        
+                        // Find hidden Gradio components and update them
+                        const hiddenPrompt = document.querySelector('#llm-system-prompt-hidden textarea');
+                        const hiddenTemp = document.querySelector('#llm-temperature-hidden input');
+                        const hiddenCtx = document.querySelector('#llm-context-hidden input');
+                        
+                        if (hiddenPrompt) {
+                            hiddenPrompt.value = systemPrompt;
+                            hiddenPrompt.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        if (hiddenTemp) {
+                            hiddenTemp.value = temperature;
+                            hiddenTemp.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        if (hiddenCtx) {
+                            hiddenCtx.value = contextLength;
+                            hiddenCtx.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        
+                        // Click the hidden apply button to trigger Python handler
+                        const applyBtn = document.querySelector('#apply-llm-btn');
+                        if (applyBtn) applyBtn.click();
+                        
+                        // Visual feedback
+                        applyLLMBtn.textContent = '✓ Applied!';
+                        setTimeout(() => { applyLLMBtn.textContent = '✓ Apply LLM Settings'; }, 1500);
+                    });
+                }
+                
+                updateConfigDisplay();
+            }
+            
+            // Delayed setup to ensure DOM is ready
+            setTimeout(setupSettingsHandlers, 1000);
 
             const startTime = Date.now();
             let currentZoomLog = 0;  // Start zoomed out
@@ -1354,6 +1736,12 @@ if __name__ == "__main__":
             setupAudio();
 
             function render(now) {
+                // Check if fractal is disabled via settings
+                if (!window.fractalSettings?.enabled) {
+                    requestAnimationFrame(render);
+                    return;
+                }
+                
                 // Calculate actual delta time
                 const dt = (now - lastFrameTime) * 0.001;
                 lastFrameTime = now;
@@ -1463,7 +1851,11 @@ if __name__ == "__main__":
                     */
                 }
                 
-                accumulatedTime += smoothedDelta * audioMorphBoost;
+                // Apply settings intensity multipliers
+                const morphMultiplier = window.fractalSettings?.morphIntensity ?? 1.0;
+                const bassMultiplier = window.fractalSettings?.bassZoomIntensity ?? 1.0;
+                
+                accumulatedTime += smoothedDelta * (1.0 + (audioMorphBoost - 1.0) * morphMultiplier);
                 // NOTE: Zoom accumulation is now handled by the adaptive zoom pause system below
 
                 const dpr = window.devicePixelRatio || 1;
@@ -1654,10 +2046,10 @@ if __name__ == "__main__":
                 const targetZoomRate = hasGoodBoundary ? cfg.zoom.rate : 0;
                 smoothZoomRate = smoothZoomRate * 0.95 + targetZoomRate * 0.05;  // 20-frame transition
                 
-                // Apply Audio Boost (bass thump)
+                // Apply Audio Boost (bass thump) - scaled by settings
                 let finalZoomRate = smoothZoomRate;
                 if (isAudioActive && audioZoomBoost > 0) {
-                     finalZoomRate += audioZoomBoost;
+                     finalZoomRate += audioZoomBoost * bassMultiplier;
                 }
                 
                 // Dynamic zoom speed limit based on current zoom level
@@ -1745,12 +2137,13 @@ if __name__ == "__main__":
                 gl.uniform1f(locMaxIter, gpuMaxIter);
                 
                 // Populate ripple uniforms with top 4 ripples (sorted by intensity)
+                const rippleMultiplier = window.fractalSettings?.rippleIntensity ?? 1.0;
                 const sortedRipples = [...ripples].sort((a, b) => b.intensity - a.intensity).slice(0, 4);
                 for (let i = 0; i < 4; i++) {
                     if (i < sortedRipples.length) {
                         const r = sortedRipples[i];
                         const timeSinceBirth = globalAudioTime - r.birthTime;
-                        gl.uniform4f(locRipples[i], timeSinceBirth, r.intensity, 0.0, 0.0);
+                        gl.uniform4f(locRipples[i], timeSinceBirth, r.intensity * rippleMultiplier, 0.0, 0.0);
                     } else {
                         gl.uniform4f(locRipples[i], 0.0, 0.0, 0.0, 0.0);  // Empty slot
                     }

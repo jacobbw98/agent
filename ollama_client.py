@@ -35,14 +35,20 @@ class OllamaClient:
         self.model = model
         self.client = ollama.Client()
         self.conversation_history = []
+        # Configurable parameters (can be modified via settings)
+        self.system_prompt = SYSTEM_PROMPT
+        self.temperature = 0.6
+        self.num_predict = 2048
     
     def reset_conversation(self):
         """Clear conversation history."""
         self.conversation_history = []
     
-    def chat(self, message: str, system_prompt: str = SYSTEM_PROMPT) -> str:
+    def chat(self, message: str, system_prompt: str = None) -> str:
         """Send a message and get a response with retries for empty outputs."""
-        messages = [{"role": "system", "content": system_prompt}]
+        # Use instance system_prompt if none provided
+        effective_prompt = system_prompt if system_prompt is not None else self.system_prompt
+        messages = [{"role": "system", "content": effective_prompt}]
         messages.extend(self.conversation_history)
         messages.append({"role": "user", "content": message})
         
@@ -50,11 +56,11 @@ class OllamaClient:
         assistant_message = ""
         
         for attempt in range(max_retries + 1):
-            # Apply recommended parameters for Nemotron-3-Nano
+            # Apply parameters (using instance variables for configurability)
             options = {
-                "temperature": 0.6,
+                "temperature": self.temperature,
                 "top_p": 0.95,
-                "num_predict": 2048
+                "num_predict": self.num_predict
             }
             
             response = self.client.chat(

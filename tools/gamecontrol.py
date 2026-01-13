@@ -5,11 +5,21 @@ Cross-platform support for Windows and Linux.
 import time
 import sys
 from typing import Optional, Tuple
-import pyautogui
 
 # Platform-specific imports
 IS_WINDOWS = sys.platform == 'win32'
 IS_LINUX = sys.platform.startswith('linux')
+
+# Try to import pyautogui (may fail on Wayland or missing X11 auth)
+try:
+    import pyautogui
+    pyautogui.PAUSE = 0.05  # Reduce pause between actions
+    pyautogui.FAILSAFE = True  # Move mouse to corner to abort
+    HAS_PYAUTOGUI = True
+except Exception as e:
+    print(f"Warning: pyautogui not available ({e}). Mouse/keyboard control disabled.")
+    pyautogui = None
+    HAS_PYAUTOGUI = False
 
 if IS_WINDOWS:
     import win32gui
@@ -22,11 +32,6 @@ elif IS_LINUX:
     except:
         HAS_WMCTRL = False
         HAS_XDOTOOL = False
-
-
-# Configure pyautogui for game control
-pyautogui.PAUSE = 0.05  # Reduce pause between actions
-pyautogui.FAILSAFE = True  # Move mouse to corner to abort
 
 
 class GameControlTool:
@@ -163,6 +168,8 @@ class GameControlTool:
     
     def send_key(self, key: str, hold_time: float = 0) -> str:
         """Send a keyboard key press."""
+        if not HAS_PYAUTOGUI:
+            return "Error: pyautogui not available (X11/display issue)"
         try:
             if hold_time > 0:
                 pyautogui.keyDown(key)
@@ -177,6 +184,8 @@ class GameControlTool:
     
     def send_keys(self, keys: str) -> str:
         """Send a sequence of keys."""
+        if not HAS_PYAUTOGUI:
+            return "Error: pyautogui not available (X11/display issue)"
         try:
             pyautogui.typewrite(keys, interval=0.02)
             return f"Typed: {keys}"
@@ -185,6 +194,8 @@ class GameControlTool:
     
     def send_hotkey(self, *keys) -> str:
         """Send a hotkey combination (e.g., 'ctrl', 'c')."""
+        if not HAS_PYAUTOGUI:
+            return "Error: pyautogui not available (X11/display issue)"
         try:
             pyautogui.hotkey(*keys)
             return f"Sent hotkey: {'+'.join(keys)}"
@@ -193,6 +204,8 @@ class GameControlTool:
     
     def move_mouse(self, x: int, y: int, relative: bool = False) -> str:
         """Move mouse to position."""
+        if not HAS_PYAUTOGUI:
+            return "Error: pyautogui not available (X11/display issue)"
         try:
             if relative:
                 pyautogui.moveRel(x, y)
@@ -205,6 +218,8 @@ class GameControlTool:
     
     def click_mouse(self, x: int = None, y: int = None, button: str = 'left', clicks: int = 1) -> str:
         """Click mouse at position."""
+        if not HAS_PYAUTOGUI:
+            return "Error: pyautogui not available (X11/display issue)"
         try:
             if x is not None and y is not None:
                 pyautogui.click(x, y, clicks=clicks, button=button)
@@ -217,6 +232,8 @@ class GameControlTool:
     
     def drag_mouse(self, start_x: int, start_y: int, end_x: int, end_y: int, button: str = 'left') -> str:
         """Drag mouse from start to end position."""
+        if not HAS_PYAUTOGUI:
+            return "Error: pyautogui not available (X11/display issue)"
         try:
             pyautogui.moveTo(start_x, start_y)
             pyautogui.drag(end_x - start_x, end_y - start_y, button=button)
@@ -226,6 +243,8 @@ class GameControlTool:
     
     def scroll(self, amount: int) -> str:
         """Scroll mouse wheel (positive = up, negative = down)."""
+        if not HAS_PYAUTOGUI:
+            return "Error: pyautogui not available (X11/display issue)"
         try:
             pyautogui.scroll(amount)
             direction = "up" if amount > 0 else "down"
@@ -235,6 +254,8 @@ class GameControlTool:
     
     def screenshot(self, region: Tuple[int, int, int, int] = None) -> str:
         """Take a screenshot of the game window or screen."""
+        if not HAS_PYAUTOGUI:
+            return "Error: pyautogui not available (X11/display issue)"
         try:
             if region:
                 img = pyautogui.screenshot(region=region)
@@ -256,6 +277,8 @@ class GameControlTool:
     
     def get_pixel_color(self, x: int, y: int) -> str:
         """Get the color of a pixel at position."""
+        if not HAS_PYAUTOGUI:
+            return "Error: pyautogui not available (X11/display issue)"
         try:
             color = pyautogui.pixel(x, y)
             return f"Pixel at ({x}, {y}): RGB{color}"
